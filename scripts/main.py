@@ -14,56 +14,6 @@ from imblearn.pipeline import Pipeline as ImbPipeline
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import GridSearchCV
 from sklearn.feature_selection import RFECV
-from tqdm import tqdm
-from sklearn.model_selection import GridSearchCV
-from sklearn.base import BaseEstimator
-
-
-class TqdmGridSearchCV(GridSearchCV):
-    def __init__(
-        self,
-        estimator,
-        param_grid,
-        scoring=None,
-        n_jobs=None,
-        refit=True,
-        cv=None,
-        verbose=0,
-        pre_dispatch="2*n_jobs",
-        error_score=np.nan,
-        return_train_score=False,
-    ):
-        super().__init__(
-            estimator=estimator,
-            param_grid=param_grid,
-            scoring=scoring,
-            n_jobs=n_jobs,
-            refit=refit,
-            cv=cv,
-            verbose=verbose,
-            pre_dispatch=pre_dispatch,
-            error_score=error_score,
-            return_train_score=return_train_score,
-        )
-        self.pbar = None
-
-    def _run_search(self, evaluate_candidates):
-        """This method is called by `fit` with a list of candidates to evaluate"""
-
-        def tqdm_evaluate_candidates(candidate_params):
-            if self.pbar is None:
-                self.pbar = tqdm(total=len(candidate_params))
-            self.pbar.set_description("Evaluating candidates")
-            out = evaluate_candidates(candidate_params)
-            self.pbar.update(n=len(candidate_params))
-            return out
-
-        super()._run_search(tqdm_evaluate_candidates)
-
-    def __del__(self):
-        if hasattr(self, "pbar") and self.pbar is not None:
-            self.pbar.close()
-
 
 # Configure logging
 logging.basicConfig(
@@ -118,13 +68,21 @@ def main():
 
     pipeline = create_pipeline(selected_features, target_column, k_neighbors)
 
-    # Grid search for hyperparameter tuning with progress bar
+    # Grid search for hyperparameter tuning
     param_grid = {
-        "classifier__n_estimators": [100, 200, 300],
-        "classifier__max_depth": [None, 10, 20, 30],
-        "smote__k_neighbors": [5, 10, 15],
+        "classifier__n_estimators": [100, 200, 300, 500, 1000, 1500, 2000],
+        "classifier__max_depth": [None, 5, 10, 20, 30, 40, 50, 60],
+        "classifier__min_samples_split": [2, 5, 10, 15, 20],
+        "classifier__min_samples_leaf": [1, 2, 4, 6, 8],
+        "classifier__max_features": ["auto", "sqrt", "log2", None],
+        "smote__k_neighbors": [1, 3, 5, 7, 10, 15, 20],
+        "preprocessor__num__imputer__strategy": ["mean", "median", "most_frequent"],
+        "feature_selection__step": [1, 2, 3],
+        "feature_selection__min_features_to_select": [1, 2, 3, 5],
     }
-    grid_search = TqdmGridSearchCV(pipeline, param_grid, cv=5, scoring="accuracy")
+    grid_search = GridSearchCV(
+        pipeline, param_grid, cv=5, scoring="balanced_accuracy", verbose=3
+    )
     grid_search.fit(X_train, y_train)
     best_pipeline = grid_search.best_estimator_
 
