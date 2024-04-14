@@ -11,6 +11,8 @@ from sklearn.metrics import (
     r2_score,
 )
 from sklearn.pipeline import Pipeline
+from imblearn.over_sampling import SMOTE
+from imblearn.pipeline import Pipeline as ImbPipeline
 import pyreadstat
 import logging
 import joblib
@@ -20,121 +22,137 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-# Load dataset from a .sav file using pyreadstat
-df, meta = pyreadstat.read_sav("input/2022_SPSS.sav")
-logging.info(f"Data loaded with shape {df.shape}")
 
-# Specify the features to be used in the model
-selected_features = ["age_group", "sex", "v144", "v712", "v131", "v143_code"]
+def load_data(filepath):
+    df, meta = pyreadstat.read_sav(filepath)
+    logging.info(f"Data loaded with shape {df.shape}")
+    return df
 
-# Impute missing values using the mean strategy for numerical stability
-imputer = SimpleImputer(strategy="mean")
-df[selected_features] = imputer.fit_transform(df[selected_features])
-# Create polynomial features to explore potential interactions and non-linear relationships
-poly = PolynomialFeatures(degree=2, interaction_only=False, include_bias=False)
-poly_features = poly.fit_transform(df[selected_features])
-poly_feature_names = [
-    f"poly_{name}" for name in poly.get_feature_names_out(selected_features)
-]  # Add prefix to avoid column name conflicts
 
-# Merge the original dataframe with the newly created polynomial features
-df_poly = pd.DataFrame(poly_features, columns=poly_feature_names, index=df.index)
-df = pd.concat([df, df_poly], axis=1)
+def preprocess_data(df, selected_features):
+    # Remove non-numeric columns first
+    df = df.select_dtypes(include=[np.number, "category"])
 
-# Clean the dataset by replacing empty strings with NaN and logging missing values
-df.replace("", np.nan, inplace=True)
-logging.info(f"Missing values per column before dropna:\n{df.isnull().sum()}")
+    # Impute missing values for numeric columns
+    imputer = SimpleImputer(strategy="median")
+    df = pd.DataFrame(imputer.fit_transform(df), columns=df.columns)
 
-# Drop rows where all columns are NaN to clean the dataset further
-df.dropna(how="all", inplace=True)
-logging.info(f"Data shape after handling missing values: {df.shape}")
-
-# Convert categorical variables to numeric codes to facilitate modeling
-for feature in selected_features:
-    if feature in df.columns:
-        series = df[feature]
-        logging.info(f"Type of {feature} before conversion: {type(series)}")
-        logging.info(f"Data in {feature}: {series.head()}")
-        if not isinstance(series.dtype, pd.CategoricalDtype):
-            df[feature] = series.astype("category").cat.codes
-            logging.info(f"Converted {feature} to categorical.")
-        else:
-            df[feature] = series.cat.codes
-            logging.info(f"{feature} was already categorical.")
-    else:
-        logging.error(f"{feature} is not in DataFrame columns.")
-
-# Define the features and target variable for the model
-X = df.drop("v104", axis=1)  # Features
-Y = df["v104"]  # Target variable
-
-# Filter the dataset to include only classes with at least 10 samples
-class_counts = Y.value_counts()
-valid_classes = class_counts[class_counts >= 10].index
-df_filtered = df[df["v104"].isin(valid_classes)]
-
-# Redefine the features and target variable for the model using the filtered dataset
-X_filtered = df_filtered.drop("v104", axis=1)  # Features
-Y_filtered = df_filtered["v104"]  # Target variable
-
-# Ensure that X_filtered contains only numeric columns before scaling
-numeric_cols_filtered = X_filtered.select_dtypes(include=[np.number]).columns.tolist()
-X_numeric_filtered = X_filtered[numeric_cols_filtered]
-
-# Standardize features to normalize data distribution
-scaler = StandardScaler()
-X_scaled_filtered = scaler.fit_transform(X_numeric_filtered)
-
-# Split the filtered dataset into training and testing sets
-X_train_filtered, X_test_filtered, Y_train_filtered, Y_test_filtered = train_test_split(
-    X_scaled_filtered, Y_filtered, test_size=0.2, stratify=Y_filtered, random_state=42
-)
-logging.info("Filtered data split into train and test sets.")
-
-# Set up a pipeline with RandomForestClassifier and expanded hyperparameter tuning
-param_grid = {
-    "classifier__n_estimators": [100, 200, 300, 500, 1000],
-    "classifier__max_depth": [None, 10, 20, 30, 50],
-    "classifier__min_samples_split": [2, 5, 10, 15],
-    "classifier__min_samples_leaf": [1, 2, 4, 6],
-    "classifier__max_features": ["auto", "sqrt", "log2"],
-}
-pipeline = Pipeline(
-    [
-        ("scaler", StandardScaler()),
-        ("classifier", RandomForestClassifier(random_state=42)),
+    # Create polynomial features for selected features
+    poly = PolynomialFeatures(degree=2, interaction_only=True, include_bias=False)
+    selected_data = df[selected_features]
+    poly_features = poly.fit_transform(selected_data)
+    poly_feature_names = [
+        f"poly_{name}" for name in poly.get_feature_names_out(selected_features)
     ]
-)
+    df_poly = pd.DataFrame(poly_features, columns=poly_feature_names, index=df.index)
+    df = pd.concat([df, df_poly], axis=1)
 
-cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
-grid_search_filtered = GridSearchCV(
-    pipeline, param_grid, cv=cv, scoring="accuracy", verbose=3
-)
-grid_search_filtered.fit(X_train_filtered, Y_train_filtered)
-best_model_filtered = grid_search_filtered.best_estimator_
-logging.info(
-    f"Expanded grid search best model parameters with filtered data: {grid_search_filtered.best_params_}"
-)
+    # Convert categorical variables to numeric codes
+    for feature in selected_features:
+        if feature in df.columns:
+            series = df[feature]
+            if not isinstance(series.dtype, pd.CategoricalDtype):
+                df[feature] = series.astype("category").cat.codes
+            else:
+                df[feature] = series.cat.codes
 
-# Evaluate the model on the filtered test set
-Y_pred_filtered = best_model_filtered.predict(X_test_filtered)
-accuracy_filtered = accuracy_score(Y_test_filtered, Y_pred_filtered)
-logging.info(f"Model accuracy with filtered data: {accuracy_filtered}")
-print(
-    "Confusion Matrix with filtered data:\n",
-    confusion_matrix(Y_test_filtered, Y_pred_filtered),
-)
-print(
-    "Classification Report with filtered data:\n",
-    classification_report(Y_test_filtered, Y_pred_filtered),
-)
-print(f"Accuracy of the model with filtered data: {accuracy_filtered:.2f}")
+    logging.info(f"Data shape after preprocessing: {df.shape}")
+    return df
 
-# Calculate and display the R^2 value for the model with filtered data
-r2_value_filtered = r2_score(Y_test_filtered, Y_pred_filtered)
-print(f"R^2 value with filtered data: {r2_value_filtered:.2f}")
 
-# Save the trained model to a file for later use
-model_filename_filtered = "output/forest_model_filtered.joblib"
-joblib.dump(best_model_filtered, model_filename_filtered)
-logging.info(f"Model saved to {model_filename_filtered}")
+def setup_model(X, Y):
+    # Determine the smallest class size in Y
+    min_class_size = Y.value_counts().min()
+    k_neighbors = max(1, min_class_size - 1)  # Ensure at least one neighbor
+
+    # Handle class imbalance with SMOTE
+    smote = SMOTE(random_state=42, k_neighbors=k_neighbors)
+    try:
+        X_resampled, Y_resampled = smote.fit_resample(X, Y)
+    except ValueError as e:
+        logging.error(f"SMOTE error: {str(e)}")
+        return None
+
+    # Standardize features
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_resampled)
+
+    # Split the dataset
+    X_train, X_test, Y_train, Y_test = train_test_split(
+        X_scaled, Y_resampled, test_size=0.2, random_state=42
+    )
+
+    # Define the model pipeline with imbalance handling
+    pipeline = ImbPipeline(
+        [
+            ("scaler", StandardScaler()),
+            (
+                "classifier",
+                RandomForestClassifier(
+                    random_state=42, n_jobs=-1, class_weight="balanced"
+                ),
+            ),
+        ]
+    )
+
+    # Hyperparameter tuning
+    param_grid = {
+        "classifier__n_estimators": [100, 300, 500, 700, 1000, 1300, 1500],
+        "classifier__max_depth": [None, 10, 20, 30, 40],
+        "classifier__min_samples_split": [2, 5, 10],
+        "classifier__min_samples_leaf": [1, 2, 4],
+        "classifier__max_features": ["auto", "sqrt", "log2"],
+    }
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    grid_search = GridSearchCV(
+        pipeline,
+        param_grid,
+        cv=cv,
+        scoring="accuracy",
+        verbose=3,
+        n_jobs=-1,
+    )
+    grid_search.fit(X_train, Y_train)
+    best_model = grid_search.best_estimator_
+    logging.info(f"Best model parameters: {grid_search.best_params_}")
+
+    return best_model, X_test, Y_test
+
+
+def evaluate_model(model, X_test, Y_test):
+    Y_pred = model.predict(X_test)
+    accuracy = accuracy_score(Y_test, Y_pred)
+    logging.info(f"Model accuracy: {accuracy}")
+    print("Confusion Matrix:\n", confusion_matrix(Y_test, Y_pred))
+    print("Classification Report:\n", classification_report(Y_test, Y_pred))
+    print(f"Accuracy of the model: {accuracy:.2f}")
+
+    r2_value = r2_score(Y_test, Y_pred)
+    print(f"R^2 value: {r2_value:.2f}")
+
+
+def save_model(model, filename):
+    joblib.dump(model, filename)
+    logging.info(f"Model saved to {filename}")
+
+
+def main():
+    df = load_data("input/2022_SPSS.sav")
+    selected_features = ["age_group", "v144", "v712", "v131", "v143_code"]
+    df = preprocess_data(df, selected_features)
+    X = df.drop("v104", axis=1)
+    Y = df["v104"]
+
+    # Explicitly check for NaNs in Y
+    if Y.isnull().any():
+        logging.error("NaN values detected in target variable Y.")
+        return
+
+    best_model, X_test, Y_test = setup_model(X, Y)
+    if best_model is not None:
+        evaluate_model(best_model, X_test, Y_test)
+        save_model(best_model, "output/forest_model_filtered.joblib")
+
+
+if __name__ == "__main__":
+    main()
