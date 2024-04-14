@@ -18,7 +18,7 @@ if not set(df["v104"].unique()).issubset({0, 1}):
     df["v104"] = (df["v104"] > threshold).astype(int)
 
 # Prepare the data
-selected_features = ["educ", "v143_code"]
+selected_features = ["educ", "v712"]
 X = df[selected_features]
 Y = df["v104"]  # Target variable
 

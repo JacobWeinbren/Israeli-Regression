@@ -1,112 +1,140 @@
 import pandas as pd
 import numpy as np
+from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-from sklearn.metrics import r2_score
-from imblearn.over_sampling import SMOTE
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    r2_score,
+)
+from sklearn.pipeline import Pipeline
 import pyreadstat
 import logging
 import joblib
 
-# Setup logging
+# Configure logging to monitor progress and debug issues
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-# Load data from .sav file
+# Load dataset from a .sav file using pyreadstat
 df, meta = pyreadstat.read_sav("input/2022_SPSS.sav")
 logging.info(f"Data loaded with shape {df.shape}")
 
-# Define the specific features to be used
+# Specify the features to be used in the model
 selected_features = ["age_group", "sex", "v144", "v712", "v131", "v143_code"]
 
-# Update DataFrame to keep only the selected features and the target variable
-df = df[selected_features + ["v104"]]  # Assuming 'v104' is the target variable
-logging.info("Limited dataset to selected features")
-
-# Convert all empty strings to NaN
-df.replace("", np.nan, inplace=True)
-
-# Drop rows with missing values in key columns
-df = df.dropna()
-logging.info("Dropped rows with missing values in key columns.")
-
-# Convert categorical variables to codes
-for feature in selected_features:
-    df[feature] = df[feature].astype("category").cat.codes
-logging.info("Converted categorical variables to codes.")
-
-# Define features and target
-X = df.drop("v104", axis=1)
-Y = df["v104"]
-
-# Ensure all columns are numeric
-X = X.apply(pd.to_numeric, errors="coerce")
-logging.info("Ensured all columns are numeric.")
-
-# Handle NaN values using an imputer
+# Impute missing values using the mean strategy for numerical stability
 imputer = SimpleImputer(strategy="mean")
-X_imputed = imputer.fit_transform(X)
-logging.info("Applied mean imputation.")
+df[selected_features] = imputer.fit_transform(df[selected_features])
+# Create polynomial features to explore potential interactions and non-linear relationships
+poly = PolynomialFeatures(degree=2, interaction_only=False, include_bias=False)
+poly_features = poly.fit_transform(df[selected_features])
+poly_feature_names = [
+    f"poly_{name}" for name in poly.get_feature_names_out(selected_features)
+]  # Add prefix to avoid column name conflicts
 
-# Create a DataFrame from the imputed data
-X_imputed_df = pd.DataFrame(X_imputed, columns=selected_features)
-logging.info("DataFrame created from imputed data.")
+# Merge the original dataframe with the newly created polynomial features
+df_poly = pd.DataFrame(poly_features, columns=poly_feature_names, index=df.index)
+df = pd.concat([df, df_poly], axis=1)
 
-# Continue with scaling
+# Clean the dataset by replacing empty strings with NaN and logging missing values
+df.replace("", np.nan, inplace=True)
+logging.info(f"Missing values per column before dropna:\n{df.isnull().sum()}")
+
+# Drop rows where all columns are NaN to clean the dataset further
+df.dropna(how="all", inplace=True)
+logging.info(f"Data shape after handling missing values: {df.shape}")
+
+# Convert categorical variables to numeric codes to facilitate modeling
+for feature in selected_features:
+    if feature in df.columns:
+        series = df[feature]
+        logging.info(f"Type of {feature} before conversion: {type(series)}")
+        logging.info(f"Data in {feature}: {series.head()}")
+        if not isinstance(series.dtype, pd.CategoricalDtype):
+            df[feature] = series.astype("category").cat.codes
+            logging.info(f"Converted {feature} to categorical.")
+        else:
+            df[feature] = series.cat.codes
+            logging.info(f"{feature} was already categorical.")
+    else:
+        logging.error(f"{feature} is not in DataFrame columns.")
+
+# Define the features and target variable for the model
+X = df.drop("v104", axis=1)  # Features
+Y = df["v104"]  # Target variable
+
+# Filter the dataset to include only classes with at least 10 samples
+class_counts = Y.value_counts()
+valid_classes = class_counts[class_counts >= 10].index
+df_filtered = df[df["v104"].isin(valid_classes)]
+
+# Redefine the features and target variable for the model using the filtered dataset
+X_filtered = df_filtered.drop("v104", axis=1)  # Features
+Y_filtered = df_filtered["v104"]  # Target variable
+
+# Ensure that X_filtered contains only numeric columns before scaling
+numeric_cols_filtered = X_filtered.select_dtypes(include=[np.number]).columns.tolist()
+X_numeric_filtered = X_filtered[numeric_cols_filtered]
+
+# Standardize features to normalize data distribution
 scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X_imputed_df)
-logging.info("Data scaling applied.")
+X_scaled_filtered = scaler.fit_transform(X_numeric_filtered)
 
-# Handling imbalanced data
-smote = SMOTE(k_neighbors=1)
-X_smote, Y_smote = smote.fit_resample(X_scaled, Y)
-logging.info("Applied SMOTE with adjusted n_neighbors to handle class imbalance.")
-
-# Split data
-X_train, X_test, Y_train, Y_test = train_test_split(
-    X_smote, Y_smote, test_size=0.2, stratify=Y_smote, random_state=42
+# Split the filtered dataset into training and testing sets
+X_train_filtered, X_test_filtered, Y_train_filtered, Y_test_filtered = train_test_split(
+    X_scaled_filtered, Y_filtered, test_size=0.2, stratify=Y_filtered, random_state=42
 )
-logging.info("Data split into train and test sets.")
+logging.info("Filtered data split into train and test sets.")
 
-# Hyperparameter tuning
+# Set up a pipeline with RandomForestClassifier and expanded hyperparameter tuning
 param_grid = {
-    "n_estimators": [300, 600, 900],
-    "max_depth": [None, 10, 20, 30],
-    "min_samples_split": [2, 5, 10],
-    "min_samples_leaf": [1, 2, 4],
+    "classifier__n_estimators": [100, 200, 300, 500, 1000],
+    "classifier__max_depth": [None, 10, 20, 30, 50],
+    "classifier__min_samples_split": [2, 5, 10, 15],
+    "classifier__min_samples_leaf": [1, 2, 4, 6],
+    "classifier__max_features": ["auto", "sqrt", "log2"],
 }
-model = RandomForestClassifier(random_state=42)
-cv = StratifiedKFold(n_splits=10)
-grid_search = GridSearchCV(model, param_grid, cv=cv, scoring="accuracy", verbose=2)
-grid_search.fit(X_train, Y_train)
-best_model = grid_search.best_estimator_
-logging.info(f"Best model parameters: {grid_search.best_params_}")
+pipeline = Pipeline(
+    [
+        ("scaler", StandardScaler()),
+        ("classifier", RandomForestClassifier(random_state=42)),
+    ]
+)
 
-# Predict and evaluate
-Y_pred_proba = best_model.predict_proba(X_test)
-print("Probabilities of voting for each party:\n", Y_pred_proba)
+cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+grid_search_filtered = GridSearchCV(
+    pipeline, param_grid, cv=cv, scoring="accuracy", verbose=3
+)
+grid_search_filtered.fit(X_train_filtered, Y_train_filtered)
+best_model_filtered = grid_search_filtered.best_estimator_
+logging.info(
+    f"Expanded grid search best model parameters with filtered data: {grid_search_filtered.best_params_}"
+)
 
-# You can still calculate accuracy based on the highest probability prediction if needed
-Y_pred = np.argmax(Y_pred_proba, axis=1)
-accuracy = accuracy_score(Y_test, Y_pred)
-logging.info(f"Model accuracy: {accuracy}")
-print("Confusion Matrix:\n", confusion_matrix(Y_test, Y_pred))
-print("Classification Report:\n", classification_report(Y_test, Y_pred))
-print(f"Accuracy of the model: {accuracy:.2f}")
+# Evaluate the model on the filtered test set
+Y_pred_filtered = best_model_filtered.predict(X_test_filtered)
+accuracy_filtered = accuracy_score(Y_test_filtered, Y_pred_filtered)
+logging.info(f"Model accuracy with filtered data: {accuracy_filtered}")
+print(
+    "Confusion Matrix with filtered data:\n",
+    confusion_matrix(Y_test_filtered, Y_pred_filtered),
+)
+print(
+    "Classification Report with filtered data:\n",
+    classification_report(Y_test_filtered, Y_pred_filtered),
+)
+print(f"Accuracy of the model with filtered data: {accuracy_filtered:.2f}")
 
-# Calculate R^2 value
-r2_value = r2_score(Y_test, Y_pred)
-print(f"R^2 value: {r2_value:.2f}")
+# Calculate and display the R^2 value for the model with filtered data
+r2_value_filtered = r2_score(Y_test_filtered, Y_pred_filtered)
+print(f"R^2 value with filtered data: {r2_value_filtered:.2f}")
 
-# Feature importance
-feature_importances = best_model.feature_importances_
-print("Feature importances:\n", feature_importances)
-
-# Save the model to a file
-model_filename = "output/forest_model.joblib"
-joblib.dump(best_model, model_filename)
-logging.info(f"Model saved to {model_filename}")
+# Save the trained model to a file for later use
+model_filename_filtered = "output/forest_model_filtered.joblib"
+joblib.dump(best_model_filtered, model_filename_filtered)
+logging.info(f"Model saved to {model_filename_filtered}")
