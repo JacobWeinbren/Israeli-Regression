@@ -1,91 +1,169 @@
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import PolynomialFeatures, StandardScaler
-from sklearn.impute import SimpleImputer
-from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import (
-    accuracy_score,
-    classification_report,
-    confusion_matrix,
-    r2_score,
-)
-from sklearn.pipeline import Pipeline
-from imblearn.over_sampling import SMOTE
-from imblearn.pipeline import Pipeline as ImbPipeline
 import pyreadstat
 import logging
 import joblib
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import PolynomialFeatures, StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from imblearn.over_sampling import SMOTE
+from imblearn.pipeline import Pipeline as ImbPipeline
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import GridSearchCV
+from sklearn.feature_selection import RFECV
+from tqdm import tqdm
+from sklearn.model_selection import GridSearchCV
+from sklearn.base import BaseEstimator
 
-# Configure logging to monitor progress and debug issues
+
+class TqdmGridSearchCV(GridSearchCV):
+    def __init__(
+        self,
+        estimator,
+        param_grid,
+        scoring=None,
+        n_jobs=None,
+        refit=True,
+        cv=None,
+        verbose=0,
+        pre_dispatch="2*n_jobs",
+        error_score=np.nan,
+        return_train_score=False,
+    ):
+        super().__init__(
+            estimator=estimator,
+            param_grid=param_grid,
+            scoring=scoring,
+            n_jobs=n_jobs,
+            refit=refit,
+            cv=cv,
+            verbose=verbose,
+            pre_dispatch=pre_dispatch,
+            error_score=error_score,
+            return_train_score=return_train_score,
+        )
+        self.pbar = None
+
+    def _run_search(self, evaluate_candidates):
+        """This method is called by `fit` with a list of candidates to evaluate"""
+
+        def tqdm_evaluate_candidates(candidate_params):
+            if self.pbar is None:
+                self.pbar = tqdm(total=len(candidate_params))
+            self.pbar.set_description("Evaluating candidates")
+            out = evaluate_candidates(candidate_params)
+            self.pbar.update(n=len(candidate_params))
+            return out
+
+        super()._run_search(tqdm_evaluate_candidates)
+
+    def __del__(self):
+        if hasattr(self, "pbar") and self.pbar is not None:
+            self.pbar.close()
+
+
+# Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
 
-def load_data(filepath):
+def load_and_prepare_data(filepath):
     df, meta = pyreadstat.read_sav(filepath)
     logging.info(f"Data loaded with shape {df.shape}")
-    return df
 
-
-def preprocess_data(df, selected_features):
-    # Remove non-numeric columns first
-    df = df.select_dtypes(include=[np.number, "category"])
-
-    # Impute missing values for numeric columns
-    imputer = SimpleImputer(strategy="median")
-    df = pd.DataFrame(imputer.fit_transform(df), columns=df.columns)
-
-    # Create polynomial features for selected features
-    poly = PolynomialFeatures(degree=2, interaction_only=True, include_bias=False)
-    selected_data = df[selected_features]
-    poly_features = poly.fit_transform(selected_data)
-    poly_feature_names = [
-        f"poly_{name}" for name in poly.get_feature_names_out(selected_features)
-    ]
-    df_poly = pd.DataFrame(poly_features, columns=poly_feature_names, index=df.index)
-    df = pd.concat([df, df_poly], axis=1)
-
-    # Convert categorical variables to numeric codes
-    for feature in selected_features:
-        if feature in df.columns:
-            series = df[feature]
-            if not isinstance(series.dtype, pd.CategoricalDtype):
-                df[feature] = series.astype("category").cat.codes
-            else:
-                df[feature] = series.cat.codes
-
-    logging.info(f"Data shape after preprocessing: {df.shape}")
-    return df
-
-
-def setup_model(X, Y):
-    # Determine the smallest class size in Y
-    min_class_size = Y.value_counts().min()
-    k_neighbors = max(1, min_class_size - 1)  # Ensure at least one neighbor
-
-    # Handle class imbalance with SMOTE
-    smote = SMOTE(random_state=42, k_neighbors=k_neighbors)
-    try:
-        X_resampled, Y_resampled = smote.fit_resample(X, Y)
-    except ValueError as e:
-        logging.error(f"SMOTE error: {str(e)}")
-        return None
-
-    # Standardize features
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_resampled)
-
-    # Split the dataset
-    X_train, X_test, Y_train, Y_test = train_test_split(
-        X_scaled, Y_resampled, test_size=0.2, random_state=42
+    # Apply filters and recode data
+    df = df[(df["v712"] != 98) & (~df["v104"].isin([30, 94, 96, 97, 98, 99]))]
+    valid_v131 = df["v131"].value_counts()
+    valid_v131 = valid_v131[valid_v131 >= 10].index.difference([98.0])
+    df = df[df["v131"].isin(valid_v131)]
+    df["recode_v131"] = df.apply(
+        lambda row: row["v131"] if row["sector"] != "Arab" else 0, axis=1
+    )
+    df["recode_v131"] = (
+        df["recode_v131"]
+        .replace({1.0: 1, 2.0: 2, 3.0: 3, 5.0: 5, 10.0: 10, 0.0: 0})
+        .fillna(99)
     )
 
-    # Define the model pipeline with imbalance handling
-    pipeline = ImbPipeline(
-        [
+    # Filter by class size
+    target_column = "v104"
+    valid_classes = df[target_column].value_counts()
+    valid_classes = valid_classes[valid_classes >= 10].index
+    df = df[df[target_column].isin(valid_classes)]
+    logging.info(f"Data after filtering: {df.shape}")
+
+    return df, target_column
+
+
+def main():
+    filepath = "input/2022_SPSS.sav"
+    selected_features = ["age_group", "v144", "v712", "recode_v131", "sector"]
+
+    df, target_column = load_and_prepare_data(filepath)
+    X, y = df[selected_features], df[target_column]
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+
+    # Calculate k_neighbors based on the smallest class count in the training set
+    min_class_count = y_train.value_counts().min()
+    k_neighbors = max(
+        min_class_count - 1, 1
+    )  # Ensure k_neighbors is at least 1 and less than min_class_count
+    logging.info(f"Adjusted SMOTE k_neighbors for training set: {k_neighbors}")
+
+    pipeline = create_pipeline(selected_features, target_column, k_neighbors)
+
+    # Grid search for hyperparameter tuning with progress bar
+    param_grid = {
+        "classifier__n_estimators": [100, 200, 300],
+        "classifier__max_depth": [None, 10, 20, 30],
+        "smote__k_neighbors": [5, 10, 15],
+    }
+    grid_search = TqdmGridSearchCV(pipeline, param_grid, cv=5, scoring="accuracy")
+    grid_search.fit(X_train, y_train)
+    best_pipeline = grid_search.best_estimator_
+
+    joblib.dump(best_pipeline, "output/pipeline.joblib")
+    logging.info("Best pipeline trained and saved.")
+
+    # Predict on the test set using the best pipeline
+    y_pred = best_pipeline.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    logging.info(f"Test accuracy with optimized pipeline: {accuracy}")
+
+
+def create_pipeline(selected_features, target_column, k_neighbors):
+    # Preprocessing for numerical features
+    numeric_transformer = Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="median")),
+            (
+                "poly",
+                PolynomialFeatures(degree=2, interaction_only=True, include_bias=False),
+            ),
             ("scaler", StandardScaler()),
+        ]
+    )
+
+    # Combine all preprocessing
+    preprocessor = ColumnTransformer(
+        transformers=[("num", numeric_transformer, selected_features)]
+    )
+
+    # Feature selection
+    rfecv = RFECV(estimator=RandomForestClassifier(), step=1, cv=5, scoring="accuracy")
+
+    # Create a complete pipeline
+    pipeline = ImbPipeline(
+        steps=[
+            ("preprocessor", preprocessor),
+            ("smote", SMOTE(random_state=42, k_neighbors=k_neighbors)),
+            ("feature_selection", rfecv),
             (
                 "classifier",
                 RandomForestClassifier(
@@ -95,63 +173,7 @@ def setup_model(X, Y):
         ]
     )
 
-    # Hyperparameter tuning
-    param_grid = {
-        "classifier__n_estimators": [100, 300, 500, 700, 1000, 1300, 1500],
-        "classifier__max_depth": [None, 10, 20, 30, 40],
-        "classifier__min_samples_split": [2, 5, 10],
-        "classifier__min_samples_leaf": [1, 2, 4],
-        "classifier__max_features": ["auto", "sqrt", "log2"],
-    }
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    grid_search = GridSearchCV(
-        pipeline,
-        param_grid,
-        cv=cv,
-        scoring="accuracy",
-        verbose=3,
-        n_jobs=-1,
-    )
-    grid_search.fit(X_train, Y_train)
-    best_model = grid_search.best_estimator_
-    logging.info(f"Best model parameters: {grid_search.best_params_}")
-
-    return best_model, X_test, Y_test
-
-
-def evaluate_model(model, X_test, Y_test):
-    Y_pred = model.predict(X_test)
-    accuracy = accuracy_score(Y_test, Y_pred)
-    logging.info(f"Model accuracy: {accuracy}")
-    print("Confusion Matrix:\n", confusion_matrix(Y_test, Y_pred))
-    print("Classification Report:\n", classification_report(Y_test, Y_pred))
-    print(f"Accuracy of the model: {accuracy:.2f}")
-
-    r2_value = r2_score(Y_test, Y_pred)
-    print(f"R^2 value: {r2_value:.2f}")
-
-
-def save_model(model, filename):
-    joblib.dump(model, filename)
-    logging.info(f"Model saved to {filename}")
-
-
-def main():
-    df = load_data("input/2022_SPSS.sav")
-    selected_features = ["age_group", "v144", "v712", "v131", "v143_code"]
-    df = preprocess_data(df, selected_features)
-    X = df.drop("v104", axis=1)
-    Y = df["v104"]
-
-    # Explicitly check for NaNs in Y
-    if Y.isnull().any():
-        logging.error("NaN values detected in target variable Y.")
-        return
-
-    best_model, X_test, Y_test = setup_model(X, Y)
-    if best_model is not None:
-        evaluate_model(best_model, X_test, Y_test)
-        save_model(best_model, "output/forest_model_filtered.joblib")
+    return pipeline
 
 
 if __name__ == "__main__":
