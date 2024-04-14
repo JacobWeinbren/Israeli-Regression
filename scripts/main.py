@@ -70,18 +70,15 @@ def main():
 
     # Grid search for hyperparameter tuning
     param_grid = {
-        "classifier__n_estimators": [100, 200, 300, 500, 1000, 1500, 2000],
-        "classifier__max_depth": [None, 5, 10, 20, 30, 40, 50, 60],
-        "classifier__min_samples_split": [2, 5, 10, 15, 20],
-        "classifier__min_samples_leaf": [1, 2, 4, 6, 8],
-        "classifier__max_features": ["auto", "sqrt", "log2", None],
-        "smote__k_neighbors": [1, 3, 5, 7, 10, 15, 20],
-        "preprocessor__num__imputer__strategy": ["mean", "median", "most_frequent"],
-        "feature_selection__step": [1, 2, 3],
-        "feature_selection__min_features_to_select": [1, 2, 3, 5],
+        "classifier__n_estimators": [200, 300, 400, 500, 600, 700],
+        "classifier__max_depth": [15, 20, 25, 30, None],
+        "classifier__min_samples_split": [2, 3, 4, 5],
+        "classifier__min_samples_leaf": [1, 2, 3],
+        "classifier__max_features": ["sqrt"],
+        "smote__k_neighbors": [1, 2, 3, 4, 5],
     }
     grid_search = GridSearchCV(
-        pipeline, param_grid, cv=5, scoring="balanced_accuracy", verbose=3
+        pipeline, param_grid, cv=5, scoring="balanced_accuracy", verbose=3, n_jobs=-1
     )
     grid_search.fit(X_train, y_train)
     best_pipeline = grid_search.best_estimator_
