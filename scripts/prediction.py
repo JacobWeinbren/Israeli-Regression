@@ -10,9 +10,20 @@ logging.basicConfig(
 
 def main():
     logging.info("Starting the prediction process.")
-    pipeline = joblib.load("output/pipeline.joblib")
 
     print("Enter the input values for the following features:")
+    sector = int(input("Which sector do you belong to? (1: Jewish, 2: Arab): "))
+
+    if sector == 1:
+        model_path = "output/best_model_jewish.joblib"
+    elif sector == 2:
+        model_path = "output/best_model_arab.joblib"
+    else:
+        logging.error("Invalid sector input")
+        return
+
+    pipeline = joblib.load(model_path)
+
     age_group = int(
         input(
             "What age group do you belong to? (1: 18-22, 2: 23-29, 3: 30-39, 4: 40-49, 5: 50-59, 6: 60-69, 7: 70-79, 8: 80 and over): "
@@ -28,7 +39,6 @@ def main():
             "In our society, where would you rank yourself on this scale nowadays? From Bottom (0) to Top (10): "
         )
     )
-    sector = int(input("Which sector do you belong to? (1: Jewish, 2: Arab): "))
     sex = int(input("What is your sex? (1: Male, 2: Female, 3: Other): "))
     educ = int(
         input(
@@ -57,7 +67,6 @@ def main():
         "sex": [sex],
         "educ": [educ],
     }
-
     input_df = pd.DataFrame(data)
     probabilities = pipeline.predict_proba(input_df)
     logging.info(f"Probabilities of voting for each party: {probabilities}")

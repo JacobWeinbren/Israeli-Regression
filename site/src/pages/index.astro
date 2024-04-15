@@ -10,8 +10,11 @@ import Form from "../components/Form.astro";
     <title>Prediction Chart</title>
 </head>
 <body>
+
+    <div class="gap-4 w-1/2 p-4">
     <Form />
     <canvas id="predictionChart"></canvas>
+    </div>
 
     <script>
         import Chart from 'chart.js/auto';
@@ -30,8 +33,15 @@ import Form from "../components/Form.astro";
 
         function updateChart() {
             const formData = new FormData(form);
-            const data: FormDataMap = {};
-            formData.forEach((value, key) => { data[key] = Number(value); });
+            const data = [{
+                age_group: Number(formData.get('ageGroup')),
+                v144: Number(formData.get('religiosity')),
+                v712: Number(formData.get('deprivationScale')),
+                recode_v131: Number(formData.get('ethnicity')),
+                sector: Number(formData.get('sector')),
+                sex: Number(formData.get('sex')),
+                educ: Number(formData.get('educationLevel'))
+            }];
 
             fetch('https://israeli-regression.onrender.com/predict', {
                 method: 'POST',
@@ -41,62 +51,64 @@ import Form from "../components/Form.astro";
                 body: JSON.stringify(data)
             })
             .then(response => response.json())
-            .then((data: number[]) => {
-                const labels: string[] = [
-                    "Likud",
-                    "Yesh Atid",
-                    "National Unity",
-                    "Hatzionut Hadatit",
-                    "Shas",
-                    "Yahadut HaTorah",
-                    "Yisrael Beitenu",
-                    "HaAvoda",
-                    "Meretz",
-                    "HaBayit HaYehudi",
-                    "Hadash-Ta’al",
-                    "Ra’am",
-                    "Balad",
-                ];
-                const probabilities = data;
+            .then((response: number[]) => {
+                const data = response[0]; // Access the first element of the outer array to get the inner array of probabilities
+    console.log(data);
+    const labels: string[] = [
+        "Likud",
+        "Yesh Atid",
+        "National Unity",
+        "Hatzionut Hadatit",
+        "Shas",
+        "Yahadut HaTorah",
+        "Yisrael Beitenu",
+        "HaAvoda",
+        "Meretz",
+        "HaBayit HaYehudi",
+        "Hadash-Ta’al",
+        "Ra’am",
+        "Balad",
+    ];
+    const probabilities = data.map(prob => parseFloat((prob * 100).toFixed(1)));
 
-                if (predictionChart) {
-                    predictionChart.destroy();
+    if (predictionChart) {
+        predictionChart.destroy();
+    }
+
+    predictionChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Probability',
+                data: probabilities,
+                backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                borderColor: 'rgba(75, 192, 192, 1)',
+                borderWidth: 1,
+                borderRadius: 5,
+                borderSkipped: false,
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            scales: {
+                x: {
+                    beginAtZero: true
                 }
-
-                predictionChart = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: 'Probability',
-                            data: probabilities,
-                            backgroundColor: 'rgba(75, 192, 192, 0.5)',
-                            borderColor: 'rgba(75, 192, 192, 1)',
-                            borderWidth: 1,
-                            borderRadius: 5,
-                            borderSkipped: false,
-                        }]
-                    },
-                    options: {
-                        indexAxis: 'y',
-                        scales: {
-                            x: {
-                                beginAtZero: true
-                            }
-                        },
-                        plugins: {
-                            legend: {
-                                display: false
-                            },
-                            title: {
-                                display: true,
-                                text: 'Prediction Probabilities'
-                            }
-                        }
-                    }
-                });
-            })
-            .catch(error => console.error('Error:', error));
+            },
+            plugins: {
+                legend: {
+                    display: false
+                },
+                title: {
+                    display: true,
+                    text: 'Prediction Probabilities'
+                }
+            }
+        }
+    });
+})
+.catch(error => console.error('Error:', error));
         }
 
         // Add event listeners to all inputs for changes
