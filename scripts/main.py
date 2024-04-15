@@ -98,27 +98,32 @@ def main():
     pipeline.named_steps["classifier"].fit(X_resampled, y_resampled)
 
     param_grid = {
-        "classifier__max_depth": [3, 4, 5, 6, 7],
-        "classifier__learning_rate": [0.01, 0.05, 0.1, 0.15, 0.2],
-        "classifier__n_estimators": [50, 100, 150, 200, 250, 300],
+        "classifier__max_depth": [3, 4, 5, 6, 7, 8, 9, 10, 12, 15],
+        "classifier__learning_rate": [0.005, 0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.25],
+        "classifier__n_estimators": [50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
         "classifier__subsample": [0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
-        "classifier__colsample_bytree": [0.6, 0.7, 0.8, 0.9, 1.0],
+        "classifier__colsample_bytree": [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+        "classifier__min_child_weight": [1, 2, 3, 4, 5, 6],
+        "classifier__gamma": [0, 0.1, 0.2, 0.3, 0.4, 0.5],
+        "classifier__reg_alpha": [0, 0.1, 0.5, 1, 1.5, 2],
+        "classifier__reg_lambda": [0.5, 1, 1.5, 2, 2.5, 3],
     }
 
     scorer = make_scorer(
         roc_auc_score, multi_class="ovo", response_method="predict_proba"
     )
-    cv_strategy = StratifiedKFold(n_splits=5)
+    cv_strategy = StratifiedKFold(n_splits=10)
 
     search = RandomizedSearchCV(
         pipeline,
         param_grid,
-        n_iter=50,
+        n_iter=10000,
         scoring=scorer,
         cv=cv_strategy,
         verbose=3,
         error_score="raise",
         n_jobs=-1,
+        random_state=42,
     )
 
     try:
