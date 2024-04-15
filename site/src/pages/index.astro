@@ -58,6 +58,9 @@ import Form from "../components/Form.astro";
 					.then((response) => response.json())
 					.then((response: number[][]) => {
 						const data = response[0];
+
+						console.log(data);
+
 						const probabilities = data.map((prob) =>
 							parseFloat((prob * 100).toFixed(1))
 						);
@@ -93,11 +96,37 @@ import Form from "../components/Form.astro";
 											{
 												label: "Probability",
 												data: probabilities,
-												backgroundColor:
-													"rgba(75, 192, 192, 0.5)",
-												borderColor:
-													"rgba(75, 192, 192, 1)",
-												borderWidth: 1,
+												backgroundColor: [
+													"#1f5aa5",
+													"#ed780c",
+													"#ed780c",
+													"#1f5aa5",
+													"black",
+													"black",
+													"#1f5aa5",
+													"#EE1C25",
+													"#EE1C25",
+													"#1f5aa5",
+													"#007A3D",
+													"#007A3D",
+													"#007A3D",
+												],
+												borderColor: [
+													"#1f5aa5",
+													"#ed780c",
+													"#ed780c",
+													"#1f5aa5",
+													"black",
+													"black",
+													"#1f5aa5",
+													"#EE1C25",
+													"#EE1C25",
+													"#1f5aa5",
+													"#007A3D",
+													"#007A3D",
+													"#007A3D",
+												],
+												borderWidth: 2,
 												borderRadius: 5,
 												borderSkipped: false,
 											},
@@ -108,6 +137,7 @@ import Form from "../components/Form.astro";
 										scales: {
 											x: {
 												beginAtZero: true,
+												max: 100,
 											},
 										},
 										plugins: {

@@ -20,11 +20,16 @@ def predict():
     input_df = pd.DataFrame([data])
 
     if sector == 1:
-        predictions = model_jewish.predict_proba(input_df)
+        model = model_jewish
     elif sector == 2:
-        predictions = model_arab.predict_proba(input_df)
+        model = model_arab
 
-    return jsonify(predictions.tolist())
+    predictions = model.predict_proba(input_df)
+    prediction_keys = model.classes_.tolist()
+
+    result = dict(zip(prediction_keys, predictions[0]))
+
+    return jsonify(result)
 
 
 @app.route("/")
