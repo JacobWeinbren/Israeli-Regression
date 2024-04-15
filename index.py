@@ -12,7 +12,7 @@ def predict():
     predictions = model.predict_proba(data)
     return jsonify(predictions.tolist())
 
-w
+
 @app.route("/")
 def home():
     return "Hello World", 200
