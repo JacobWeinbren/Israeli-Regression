@@ -8,7 +8,6 @@ model = joblib.load("output/pipeline.joblib")
 @app.route("/predict", methods=["POST"])
 def predict():
     data = request.get_json()
-    # Assuming data is in the correct format that the model expects
     predictions = model.predict_proba(data)
     return jsonify(predictions.tolist())
 
