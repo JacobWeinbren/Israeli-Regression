@@ -17,7 +17,7 @@ def predict():
     if sector not in [1, 2]:
         return jsonify({"error": "Invalid sector"}), 400
 
-    input_df = pd.DataFrame(data)
+    input_df = pd.DataFrame([data])
 
     if sector == 1:
         predictions = model_jewish.predict_proba(input_df)
