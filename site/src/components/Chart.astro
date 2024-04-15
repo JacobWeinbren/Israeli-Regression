@@ -1,0 +1,142 @@
+---
+
+---
+
+<canvas id="predictionChart"></canvas>
+
+<script>
+	import Chart from "chart.js/auto";
+
+	const form = document.getElementById("predictionForm") as HTMLFormElement;
+	const canvas = document.getElementById(
+		"predictionChart"
+	) as HTMLCanvasElement;
+	const ctx = canvas.getContext("2d");
+	if (!ctx) {
+		console.error("Failed to get canvas context");
+		throw new Error("Failed to get canvas context");
+	}
+
+	let predictionChart: Chart | null = null;
+
+	const partyNames: { [key: string]: string } = {
+		1: "Likud",
+		2: "Yesh Atid",
+		3: "National Unity",
+		4: "Hatzionut Hadatit",
+		5: "Shas",
+		6: "Yahadut HaTorah",
+		7: "Yisrael Beitenu",
+		8: "HaAvoda",
+		9: "Meretz",
+		10: "HaBayit HaYehudi",
+		11: "Hadash-Ta’al",
+		12: "Ra’am",
+		13: "Balad",
+		94: "Doesn’t intend to vote",
+		96: "Blank Ballot",
+		97: "Undecided/debating",
+		98: "No response / Doesn’t know",
+		99: "Refuses to answer",
+	};
+
+	function updateChart() {
+		const formData = new FormData(form);
+		const data = {
+			age_group: Number(formData.get("ageGroup")),
+			v144: Number(formData.get("religiosity")),
+			v712: Number(formData.get("deprivationScale")),
+			recode_v131: Number(formData.get("ethnicity")),
+			sector: Number(formData.get("sector")),
+			sex: Number(formData.get("sex")),
+			educ: Number(formData.get("educationLevel")),
+		};
+
+		console.log(data);
+
+		fetch("https://israeli-regression.onrender.com/predict", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(data),
+		})
+			.then((response) => response.json())
+			.then((response) => {
+                console.log(response);
+
+				const probabilities = Object.keys(response).map((key) => ({
+					party: partyNames[key],
+					probability: parseFloat((response[key] * 100).toFixed(1)),
+				}));
+
+				if (predictionChart) {
+					predictionChart.data.labels = probabilities.map(
+						(p) => p.party
+					);
+					predictionChart.data.datasets[0].data = probabilities.map(
+						(p) => p.probability
+					);
+					predictionChart.update();
+				} else {
+					if (!ctx) {
+						console.error("Failed to get canvas context");
+						return;
+					}
+
+					predictionChart = new Chart(ctx, {
+						type: "bar",
+						data: {
+							labels: probabilities.map((p) => p.party),
+							datasets: [
+								{
+									label: "Probability",
+									data: probabilities.map(
+										(p) => p.probability
+									),
+									backgroundColor: "#1f5aa5",
+									borderColor: "#1f5aa5",
+									borderWidth: 2,
+									borderRadius: 5,
+									borderSkipped: false,
+								},
+							],
+						},
+						options: {
+							indexAxis: "y",
+							scales: {
+								x: {
+									beginAtZero: true,
+									max: 100,
+								},
+							},
+							plugins: {
+								legend: {
+									display: false,
+								},
+								title: {
+									display: true,
+									text: "Probability of Voting for Party",
+								},
+							},
+							font: {
+								family: "Arial, sans-serif",
+								size: 14,
+								weight: "bold",
+							},
+						},
+					});
+				}
+			})
+			.catch((error) => console.error("Error:", error));
+	}
+
+	// Add event listeners to all inputs for changes
+	const inputs = form.querySelectorAll("select");
+	inputs.forEach((input) => {
+		input.addEventListener("change", updateChart);
+	});
+
+	// Initial chart load
+	window.addEventListener("load", updateChart);
+</script>
