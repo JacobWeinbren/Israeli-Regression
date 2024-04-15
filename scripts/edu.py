@@ -19,15 +19,16 @@ def calculate_relationships(df, target):
         valid_idx = df[column].notna() & df[target].notna()
         encoded_col = encoder.fit_transform(df.loc[valid_idx, column])
         encoded_target = encoder.fit_transform(df.loc[valid_idx, target])
-        # Calculate Chi-squared test statistic for all variables
-        chi2, _, _, _ = stats.chi2_contingency(pd.crosstab(encoded_col, encoded_target))
-        results[column] = chi2  # Chi-squared statistic as a measure of association
+        # Calculate Chi-squared test statistic and p-value for all variables
+        chi2, p_value, _, _ = stats.chi2_contingency(
+            pd.crosstab(encoded_col, encoded_target)
+        )
+        results[column] = (
+            chi2,
+            p_value,
+        )  # Chi-squared statistic and p-value as measures of association
     # Sort results by the strength of relationship
-    sorted_results = sorted(results.items(), key=lambda item: item[1], reverse=True)
-    return sorted_results
-
-    # Sort results by the strength of relationship
-    sorted_results = sorted(results.items(), key=lambda item: item[1], reverse=True)
+    sorted_results = sorted(results.items(), key=lambda item: item[1][0], reverse=True)
     return sorted_results
 
 
