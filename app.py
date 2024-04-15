@@ -13,7 +13,6 @@ model_arab = joblib.load("output/best_model_arab.joblib")
 def predict():
     data = request.get_json()
     sector = data.pop("sector", None)
-
     if sector not in [1, 2]:
         return jsonify({"error": "Invalid sector"}), 400
 
@@ -27,7 +26,9 @@ def predict():
     predictions = model.predict_proba(input_df)
     prediction_keys = model.classes_.tolist()
 
-    result = dict(zip(prediction_keys, predictions[0]))
+    predictions_list = predictions[0].tolist()
+
+    result = dict(zip(prediction_keys, predictions_list))
 
     return jsonify(result)
 
