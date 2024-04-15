@@ -59,7 +59,7 @@ import Form from "../components/Form.astro";
 					.then((response: number[][]) => {
 						const data = response[0];
 
-						console.log(data);
+						console.log(response);
 
 						const probabilities = data.map((prob) =>
 							parseFloat((prob * 100).toFixed(1))

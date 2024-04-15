@@ -5,8 +5,14 @@ import pandas as pd
 
 app = Flask(__name__)
 CORS(app)
+
+# Load models
 model_jewish = joblib.load("output/best_model_jewish.joblib")
 model_arab = joblib.load("output/best_model_arab.joblib")
+
+# Load encoders
+encoder_jewish = joblib.load("output/encoder_jewish.joblib")
+encoder_arab = joblib.load("output/encoder_arab.joblib")
 
 
 @app.route("/predict", methods=["POST"])
@@ -20,15 +26,21 @@ def predict():
 
     if sector == 1:
         model = model_jewish
+        encoder = encoder_jewish
     elif sector == 2:
         model = model_arab
+        encoder = encoder_arab
 
     predictions = model.predict_proba(input_df)
     prediction_keys = model.classes_.tolist()
 
+    # Use the encoder to get original labels
+    original_labels = encoder.inverse_transform(prediction_keys)
+
     predictions_list = predictions[0].tolist()
 
-    result = dict(zip(prediction_keys, predictions_list))
+    # Create result dictionary using original labels
+    result = dict(zip(original_labels, predictions_list))
 
     return jsonify(result)
 

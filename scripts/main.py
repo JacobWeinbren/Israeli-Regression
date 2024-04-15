@@ -130,6 +130,11 @@ def main():
     encoder_jewish = LabelEncoder()
     encoder_arab.fit(y_arab.unique())
     encoder_jewish.fit(y_jewish.unique())
+
+    # Save the encoders
+    joblib.dump(encoder_arab, "output/encoder_arab.joblib")
+    joblib.dump(encoder_jewish, "output/encoder_jewish.joblib")
+
     y_arab_encoded = encoder_arab.transform(y_arab)
     y_jewish_encoded = encoder_jewish.transform(y_jewish)
 
@@ -201,7 +206,7 @@ def main():
     search_arab = RandomizedSearchCV(
         pipeline_arab,
         param_grid,
-        n_iter=10000,
+        n_iter=10,
         scoring=scorer,
         cv=cv_strategy,
         verbose=3,
@@ -212,7 +217,7 @@ def main():
     search_jewish = RandomizedSearchCV(
         pipeline_jewish,
         param_grid,
-        n_iter=10000,
+        n_iter=10,
         scoring=scorer,
         cv=cv_strategy,
         verbose=3,
