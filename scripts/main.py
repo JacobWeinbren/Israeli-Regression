@@ -1,21 +1,22 @@
-import pandas as pd
-import numpy as np
-import pyreadstat
-import logging
-import joblib
-from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import PolynomialFeatures, StandardScaler
-from sklearn.impute import SimpleImputer
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
-from sklearn.metrics import accuracy_score
-from sklearn.model_selection import GridSearchCV
-from sklearn.feature_selection import RFECV
+from imblearn.over_sampling import SMOTE
+from sklearn.impute import KNNImputer
+from sklearn.preprocessing import StandardScaler, PolynomialFeatures, LabelEncoder
+from sklearn.compose import ColumnTransformer
+from xgboost import XGBClassifier
+from sklearn.model_selection import (
+    train_test_split,
+    RandomizedSearchCV,
+    StratifiedKFold,
+)
+from sklearn.metrics import roc_auc_score, make_scorer
+import logging
+import numpy as np
+import pandas as pd
+import pyreadstat
 
-# Configure logging
+# Custom logging setup
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
@@ -25,110 +26,111 @@ def load_and_prepare_data(filepath):
     df, meta = pyreadstat.read_sav(filepath)
     logging.info(f"Data loaded with shape {df.shape}")
 
-    # Apply filters and recode data
-    df = df[(df["v712"] != 98) & (~df["v104"].isin([30, 94, 96, 97, 98, 99]))]
-    valid_v131 = df["v131"].value_counts()
-    valid_v131 = valid_v131[valid_v131 >= 10].index.difference([98.0])
-    df = df[df["v131"].isin(valid_v131)]
-    df["recode_v131"] = df.apply(
-        lambda row: row["v131"] if row["sector"] != "Arab" else 0, axis=1
-    )
-    df["recode_v131"] = (
-        df["recode_v131"]
-        .replace({1.0: 1, 2.0: 2, 3.0: 3, 5.0: 5, 10.0: 10, 0.0: 0})
-        .fillna(99)
-    )
+    # Ensuring each class has at least a minimum number of samples
+    min_samples_per_class = 10
+    class_counts = df["v104"].value_counts()
+    valid_classes = class_counts[class_counts >= min_samples_per_class].index
+    df = df[df["v104"].isin(valid_classes)]
+    logging.info(f"Data after filtering small classes: {df.shape}")
 
-    # Filter by class size
-    target_column = "v104"
-    valid_classes = df[target_column].value_counts()
-    valid_classes = valid_classes[valid_classes >= 10].index
-    df = df[df[target_column].isin(valid_classes)]
-    logging.info(f"Data after filtering: {df.shape}")
+    recode_map = {1.0: 1, 2.0: 2, 3.0: 3, 5.0: 5, 10.0: 10}
+    df["recode_v131"] = df["v131"].apply(lambda x: recode_map.get(x, 99))
 
-    return df, target_column
-
-
-def main():
-    filepath = "input/2022_SPSS.sav"
     selected_features = ["age_group", "v144", "v712", "recode_v131", "sector"]
+    X = df[selected_features]
+    y = df["v104"]
 
-    df, target_column = load_and_prepare_data(filepath)
-    X, y = df[selected_features], df[target_column]
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
-
-    # Calculate k_neighbors based on the smallest class count in the training set
-    min_class_count = y_train.value_counts().min()
-    k_neighbors = max(
-        min_class_count - 1, 1
-    )  # Ensure k_neighbors is at least 1 and less than min_class_count
-    logging.info(f"Adjusted SMOTE k_neighbors for training set: {k_neighbors}")
-
-    pipeline = create_pipeline(selected_features, target_column, k_neighbors)
-
-    # Grid search for hyperparameter tuning
-    param_grid = {
-        "classifier__n_estimators": [200, 300, 400, 500, 600, 700],
-        "classifier__max_depth": [15, 20, 25, 30, None],
-        "classifier__min_samples_split": [2, 3, 4, 5],
-        "classifier__min_samples_leaf": [1, 2, 3],
-        "classifier__max_features": ["sqrt"],
-        "smote__k_neighbors": [1, 2, 3, 4, 5],
-    }
-    grid_search = GridSearchCV(
-        pipeline, param_grid, cv=5, scoring="balanced_accuracy", verbose=3, n_jobs=-1
-    )
-    grid_search.fit(X_train, y_train)
-    best_pipeline = grid_search.best_estimator_
-
-    joblib.dump(best_pipeline, "output/pipeline.joblib")
-    logging.info("Best pipeline trained and saved.")
-
-    # Predict on the test set using the best pipeline
-    y_pred = best_pipeline.predict(X_test)
-    accuracy = accuracy_score(y_test, y_pred)
-    logging.info(f"Test accuracy with optimized pipeline: {accuracy}")
+    return X, y
 
 
-def create_pipeline(selected_features, target_column, k_neighbors):
-    # Preprocessing for numerical features
+def create_pipeline():
     numeric_transformer = Pipeline(
         steps=[
-            ("imputer", SimpleImputer(strategy="median")),
-            (
-                "poly",
-                PolynomialFeatures(degree=2, interaction_only=True, include_bias=False),
-            ),
+            ("imputer", KNNImputer(n_neighbors=2)),
             ("scaler", StandardScaler()),
+            ("poly", PolynomialFeatures(degree=2)),
         ]
     )
 
-    # Combine all preprocessing
     preprocessor = ColumnTransformer(
-        transformers=[("num", numeric_transformer, selected_features)]
+        transformers=[
+            ("num", numeric_transformer, ["age_group", "v144", "v712", "recode_v131"]),
+        ]
     )
 
-    # Feature selection
-    rfecv = RFECV(estimator=RandomForestClassifier(), step=1, cv=5, scoring="accuracy")
-
-    # Create a complete pipeline
     pipeline = ImbPipeline(
         steps=[
             ("preprocessor", preprocessor),
-            ("smote", SMOTE(random_state=42, k_neighbors=k_neighbors)),
-            ("feature_selection", rfecv),
             (
                 "classifier",
-                RandomForestClassifier(
-                    random_state=42, n_jobs=-1, class_weight="balanced"
-                ),
+                XGBClassifier(eval_metric="mlogloss", use_label_encoder=False),
             ),
         ]
     )
 
     return pipeline
+
+
+def main():
+    filepath = "input/2022_SPSS.sav"
+    X, y = load_and_prepare_data(filepath)
+
+    # Define all possible classes explicitly
+    all_classes = np.unique(y)
+    encoder = LabelEncoder()
+    encoder.fit(all_classes)
+    y_encoded = encoder.transform(y)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
+    )
+
+    # Manually handle resampling
+    smote = SMOTE(sampling_strategy="auto", random_state=42)
+    X_resampled, y_resampled = smote.fit_resample(X_train, y_train)
+
+    # Ensure no class mismatch
+    if not np.array_equal(np.unique(y_resampled), np.unique(y_train)):
+        logging.error("Class mismatch detected after resampling")
+        raise ValueError("Resampling resulted in inconsistent class labels.")
+
+    pipeline = create_pipeline()
+    pipeline.named_steps["classifier"].fit(X_resampled, y_resampled)
+
+    param_grid = {
+        "classifier__max_depth": [3, 4, 5, 6, 7],
+        "classifier__learning_rate": [0.01, 0.05, 0.1, 0.15, 0.2],
+        "classifier__n_estimators": [50, 100, 150, 200, 250, 300],
+        "classifier__subsample": [0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+        "classifier__colsample_bytree": [0.6, 0.7, 0.8, 0.9, 1.0],
+    }
+
+    scorer = make_scorer(
+        roc_auc_score, multi_class="ovo", response_method="predict_proba"
+    )
+    cv_strategy = StratifiedKFold(n_splits=5)
+
+    search = RandomizedSearchCV(
+        pipeline,
+        param_grid,
+        n_iter=50,
+        scoring=scorer,
+        cv=cv_strategy,
+        verbose=3,
+        error_score="raise",
+        n_jobs=-1,
+    )
+
+    try:
+        search.fit(X_resampled, y_resampled)  # Use resampled data for fitting
+        best_model = search.best_estimator_
+        y_pred_proba = best_model.predict_proba(X_test)
+
+        auc_score = roc_auc_score(y_test, y_pred_proba, multi_class="ovo")
+        logging.info(f"Test AUC: {auc_score}")
+    except Exception as e:
+        logging.error(f"Error during model fitting: {e}")
+        raise
 
 
 if __name__ == "__main__":
