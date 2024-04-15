@@ -33,10 +33,14 @@ def load_and_prepare_data(filepath):
     df, meta = pyreadstat.read_sav(filepath)
     logging.info(f"Data loaded with shape {df.shape}")
 
+    # Group categories 16, 17, 18, 19, 20, 21, 30 under 16 in v104
+    group_categories = [16, 17, 18, 19, 20, 21, 30]
+    df["v104"] = df["v104"].replace(group_categories, 16)
+
     # Filter out unwanted 'don't know' and 'other' categories
     df = df[df["v712"] != 98]  # Remove 'Don't know' from v712
     df = df[df["v131"] != 98]  # Remove 'Don't know' from v131
-    unwanted_v104 = [16, 17, 18, 19, 20, 21, 30, 94, 96, 97, 98, 99]
+    unwanted_v104 = [94, 96, 97, 98, 99]
     df = df[~df["v104"].isin(unwanted_v104)]  # Remove specified categories from v104
 
     logging.info(f"Data after filtering unwanted categories: {df.shape}")

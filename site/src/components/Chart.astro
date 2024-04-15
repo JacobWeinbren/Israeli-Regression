@@ -33,11 +33,24 @@
 		11: "Hadash-Ta’al",
 		12: "Ra’am",
 		13: "Balad",
-		94: "Doesn’t intend to vote",
-		96: "Blank Ballot",
-		97: "Undecided/debating",
-		98: "No response / Doesn’t know",
-		99: "Refuses to answer",
+        16: "Other",
+	};
+
+	const partyColors: { [key: number]: string } = {
+		1: "#1f5aa5",
+		2: "#ed780c",
+		3: "#ed780c",
+		4: "#1f5aa5",
+		5: "black",
+		6: "black",
+		7: "#1f5aa5",
+		8: "#EE1C25",
+		9: "#EE1C25",
+		10: "#1f5aa5",
+		11: "#007A3D",
+		12: "#007A3D",
+		13: "#007A3D",
+        16: "grey"
 	};
 
 	function updateChart() {
@@ -52,8 +65,6 @@
 			educ: Number(formData.get("educationLevel")),
 		};
 
-		console.log(data);
-
 		fetch("https://israeli-regression.onrender.com/predict", {
 			method: "POST",
 			headers: {
@@ -63,11 +74,10 @@
 		})
 			.then((response) => response.json())
 			.then((response) => {
-                console.log(response);
-
 				const probabilities = Object.keys(response).map((key) => ({
-					party: partyNames[key],
+					party: partyNames[parseInt(key)],
 					probability: parseFloat((response[key] * 100).toFixed(1)),
+					color: partyColors[parseInt(key)] || "#FFFFFF", // Default color if not defined
 				}));
 
 				if (predictionChart) {
@@ -77,6 +87,8 @@
 					predictionChart.data.datasets[0].data = probabilities.map(
 						(p) => p.probability
 					);
+					predictionChart.data.datasets[0].backgroundColor =
+						probabilities.map((p) => p.color);
 					predictionChart.update();
 				} else {
 					if (!ctx) {
@@ -94,9 +106,9 @@
 									data: probabilities.map(
 										(p) => p.probability
 									),
-									backgroundColor: "#1f5aa5",
-									borderColor: "#1f5aa5",
-									borderWidth: 2,
+									backgroundColor: probabilities.map(
+										(p) => p.color
+									),
 									borderRadius: 5,
 									borderSkipped: false,
 								},
