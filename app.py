@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import joblib
+import pandas as pd
 
 app = Flask(__name__)
 model = joblib.load("output/pipeline.joblib")
@@ -8,7 +9,8 @@ model = joblib.load("output/pipeline.joblib")
 @app.route("/predict", methods=["POST"])
 def predict():
     data = request.get_json()
-    predictions = model.predict_proba(data)
+    input_df = pd.DataFrame(data)
+    predictions = model.predict_proba(input_df)
     return jsonify(predictions.tolist())
 
 
