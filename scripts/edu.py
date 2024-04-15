@@ -1,50 +1,43 @@
-import statsmodels.api as sm
-import logging
+import pandas as pd
 import pyreadstat
+import scipy.stats as stats
+from sklearn.preprocessing import LabelEncoder
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-df, meta = pyreadstat.read_sav("input/2022_SPSS.sav")
-logging.info(f"Data loaded with shape {df.shape}")
 
-import numpy as np
+def load_data(filepath):
+    df, meta = pyreadstat.read_sav(filepath)
+    return df
 
-# Assuming 'educ' is education and 'v143_code' is socio-economic ranking
-# and 'v104' is your target variable.
-# Check if 'v104' is binary
-if not set(df["v104"].unique()).issubset({0, 1}):
-    # Convert 'v104' to binary if not already (example conversion)
-    threshold = 10  # Define your own threshold
-    df["v104"] = (df["v104"] > threshold).astype(int)
 
-print(df.columns.tolist())
+def calculate_relationships(df, target):
+    results = {}
+    for column in df.columns:
+        if column == target:
+            continue
+        # Encode all variables, assuming they are categorical
+        encoder = LabelEncoder()
+        valid_idx = df[column].notna() & df[target].notna()
+        encoded_col = encoder.fit_transform(df.loc[valid_idx, column])
+        encoded_target = encoder.fit_transform(df.loc[valid_idx, target])
+        # Calculate Chi-squared test statistic for all variables
+        chi2, _, _, _ = stats.chi2_contingency(pd.crosstab(encoded_col, encoded_target))
+        results[column] = chi2  # Chi-squared statistic as a measure of association
+    # Sort results by the strength of relationship
+    sorted_results = sorted(results.items(), key=lambda item: item[1], reverse=True)
+    return sorted_results
 
-# Prepare the data
-selected_features = [
-    "age_group",
-    "sex",
-    "v144",
-    "v712",
-    "v131",
-    "v143_code",
-    "educ",
-]
-X = df[selected_features]
-Y = df["v104"]  # Target variable
+    # Sort results by the strength of relationship
+    sorted_results = sorted(results.items(), key=lambda item: item[1], reverse=True)
+    return sorted_results
 
-# Check for NaNs or infinite values and handle them
-X = X.replace([np.inf, -np.inf], np.nan)  # Replace inf with NaN
-X = X.dropna()  # Drop rows with NaNs
-Y = Y.loc[X.index]  # Ensure Y is aligned with X after dropping rows
 
-# Add a constant to the model (intercept)
-X = sm.add_constant(X)
+def main():
+    filepath = "input/2022_SPSS.sav"
+    df = load_data(filepath)
+    relationships = calculate_relationships(df, "v104")
+    for variable, strength in relationships:
+        print(f"{variable}: {strength}")
 
-# Fit logistic regression model
-model = sm.Logit(Y, X)
-result = model.fit()
 
-# Print the summary of the regression results
-print(result.summary())
+if __name__ == "__main__":
+    main()

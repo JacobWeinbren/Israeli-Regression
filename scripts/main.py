@@ -2,7 +2,12 @@ from sklearn.pipeline import Pipeline
 from imblearn.pipeline import Pipeline as ImbPipeline
 from imblearn.over_sampling import SMOTE
 from sklearn.impute import KNNImputer
-from sklearn.preprocessing import StandardScaler, PolynomialFeatures, LabelEncoder
+from sklearn.preprocessing import (
+    StandardScaler,
+    PolynomialFeatures,
+    LabelEncoder,
+    OneHotEncoder,
+)
 from sklearn.compose import ColumnTransformer
 from xgboost import XGBClassifier
 from sklearn.model_selection import (
@@ -13,8 +18,8 @@ from sklearn.model_selection import (
 from sklearn.metrics import roc_auc_score, make_scorer
 import logging
 import numpy as np
-import pandas as pd
 import pyreadstat
+import joblib
 
 # Custom logging setup
 logging.basicConfig(
@@ -26,6 +31,14 @@ def load_and_prepare_data(filepath):
     df, meta = pyreadstat.read_sav(filepath)
     logging.info(f"Data loaded with shape {df.shape}")
 
+    # Filter out unwanted 'don't know' and 'other' categories
+    df = df[df["v712"] != 98]  # Remove 'Don't know' from v712
+    df = df[df["v131"] != 98]  # Remove 'Don't know' from v131
+    unwanted_v104 = [30, 94, 96, 97, 98, 99]
+    df = df[~df["v104"].isin(unwanted_v104)]  # Remove specified categories from v104
+
+    logging.info(f"Data after filtering unwanted categories: {df.shape}")
+
     # Ensuring each class has at least a minimum number of samples
     min_samples_per_class = 10
     class_counts = df["v104"].value_counts()
@@ -34,9 +47,20 @@ def load_and_prepare_data(filepath):
     logging.info(f"Data after filtering small classes: {df.shape}")
 
     recode_map = {1.0: 1, 2.0: 2, 3.0: 3, 5.0: 5, 10.0: 10}
-    df["recode_v131"] = df["v131"].apply(lambda x: recode_map.get(x, 99))
+    # Adjust recode_v131 based on sector
+    df["recode_v131"] = df.apply(
+        lambda row: 0 if row["sector"] == 2 else recode_map.get(row["v131"], 99), axis=1
+    )
 
-    selected_features = ["age_group", "v144", "v712", "recode_v131", "sector"]
+    selected_features = [
+        "age_group",
+        "v144",
+        "v712",
+        "recode_v131",
+        "sector",
+        "sex",
+        "educ",
+    ]
     X = df[selected_features]
     y = df["v104"]
 
@@ -52,9 +76,18 @@ def create_pipeline():
         ]
     )
 
+    categorical_transformer = Pipeline(
+        steps=[("onehot", OneHotEncoder(handle_unknown="ignore"))]
+    )
+
     preprocessor = ColumnTransformer(
         transformers=[
-            ("num", numeric_transformer, ["age_group", "v144", "v712", "recode_v131"]),
+            ("num", numeric_transformer, ["age_group", "v144", "v712"]),
+            (
+                "cat",
+                categorical_transformer,
+                ["recode_v131", "sector", "sex", "educ"],
+            ),
         ]
     )
 
@@ -117,7 +150,7 @@ def main():
     search = RandomizedSearchCV(
         pipeline,
         param_grid,
-        n_iter=10000,
+        n_iter=1000,
         scoring=scorer,
         cv=cv_strategy,
         verbose=3,
@@ -129,8 +162,11 @@ def main():
     try:
         search.fit(X_resampled, y_resampled)  # Use resampled data for fitting
         best_model = search.best_estimator_
-        y_pred_proba = best_model.predict_proba(X_test)
 
+        # Save the pipeline
+        joblib.dump(best_model, "output/pipeline.joblib")
+
+        y_pred_proba = best_model.predict_proba(X_test)
         auc_score = roc_auc_score(y_test, y_pred_proba, multi_class="ovo")
         logging.info(f"Test AUC: {auc_score}")
     except Exception as e:

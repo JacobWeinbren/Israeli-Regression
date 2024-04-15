@@ -29,6 +29,12 @@ def main():
         )
     )
     sector = int(input("Which sector do you belong to? (1: Jewish, 2: Arab): "))
+    sex = int(input("What is your sex? (1: Male, 2: Female, 3: Other): "))
+    educ = int(
+        input(
+            "What is your highest level of education? (1: No formal education, 2: Elementary school, 3: Partial high school, 4: Complete high school - without matriculation diploma, 5: Complete high school - with matriculation diploma, 6: Post high school, non-academic, 7: Partial academic degree, 8: Full academic degree - BA, 9: Full academic degree - MA or higher): "
+        )
+    )
 
     if sector == 2:
         recode_v131 = 0  # Arab
@@ -48,6 +54,8 @@ def main():
         "v712": [v712],
         "recode_v131": [recode_v131],
         "sector": [sector],
+        "sex": [sex],
+        "educ": [educ],
     }
 
     input_df = pd.DataFrame(data)
