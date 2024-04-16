@@ -33,7 +33,6 @@
 		11: "Hadash-Ta’al",
 		12: "Ra’am",
 		13: "Balad",
-        16: "Other",
 	};
 
 	const partyColors: { [key: number]: string } = {
@@ -50,7 +49,6 @@
 		11: "#007A3D",
 		12: "#007A3D",
 		13: "#007A3D",
-        16: "grey"
 	};
 
 	function updateChart() {
@@ -58,11 +56,11 @@
 		const data = {
 			age_group: Number(formData.get("ageGroup")),
 			v144: Number(formData.get("religiosity")),
-			v712: Number(formData.get("deprivationScale")),
+			v712_groups: Number(formData.get("deprivationScale")),
 			recode_v131: Number(formData.get("ethnicity")),
 			sector: Number(formData.get("sector")),
 			sex: Number(formData.get("sex")),
-			educ: Number(formData.get("educationLevel")),
+			educ_group: Number(formData.get("educationLevel")),
 		};
 
 		fetch("https://israeli-regression.onrender.com/predict", {
@@ -77,7 +75,7 @@
 				const probabilities = Object.keys(response).map((key) => ({
 					party: partyNames[parseInt(key)],
 					probability: parseFloat((response[key] * 100).toFixed(1)),
-					color: partyColors[parseInt(key)] || "#FFFFFF", // Default color if not defined
+					color: partyColors[parseInt(key)] || "#FFFFFF",
 				}));
 
 				if (predictionChart) {
@@ -111,6 +109,7 @@
 									),
 									borderRadius: 5,
 									borderSkipped: false,
+									barThickness: 24, 
 								},
 							],
 						},

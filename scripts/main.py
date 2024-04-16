@@ -70,7 +70,7 @@ def load_and_prepare_data(filepath):
     }
     df["educ_group"] = df["educ"].map(education_map)
 
-    # Group age into categories, combining 7 and 8
+    # Group age into categories
     age_map = {
         1: 1,
         2: 1,
@@ -190,15 +190,16 @@ def main():
     min_class_size_jewish = counts_jewish.min()
 
     # Set n_neighbors to one less than the number of samples in the smallest class
+    min_k_neighbors = 5  # Set a minimum threshold for k_neighbors
     smote_arab = SMOTE(
         sampling_strategy="auto",
         random_state=42,
-        k_neighbors=max(1, min_class_size_arab - 1),
+        k_neighbors=min(max(1, min_class_size_arab - 1), min_k_neighbors),
     )
     smote_jewish = SMOTE(
         sampling_strategy="auto",
         random_state=42,
-        k_neighbors=max(1, min_class_size_jewish - 1),
+        k_neighbors=min(max(1, min_class_size_jewish - 1), min_k_neighbors),
     )
 
     # Apply SMOTE
@@ -237,17 +238,13 @@ def main():
     unique_jewish, counts_jewish = np.unique(y_jewish_train, return_counts=True)
     min_class_size_jewish = counts_jewish.min()
 
-    # Log the class labels and their counts
-    logging.info(f"Arab class counts: {dict(zip(unique_arab, counts_arab))}")
-    logging.info(f"Jewish class counts: {dict(zip(unique_jewish, counts_jewish))}")
-
     cv_strategy_arab = StratifiedKFold(n_splits=10)
     cv_strategy_jewish = StratifiedKFold(n_splits=10)
 
     search_arab = RandomizedSearchCV(
         pipeline_arab,
         param_grid,
-        n_iter=10,
+        n_iter=10000,
         scoring=scorer,
         cv=cv_strategy_arab,
         verbose=3,
@@ -258,7 +255,7 @@ def main():
     search_jewish = RandomizedSearchCV(
         pipeline_jewish,
         param_grid,
-        n_iter=10,
+        n_iter=10000,
         scoring=scorer,
         cv=cv_strategy_jewish,
         verbose=3,

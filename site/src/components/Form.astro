@@ -2,14 +2,10 @@
 import Select from "./Select.astro";
 
 const ageGroups = [
-	{ value: 1, label: "18-22" },
-	{ value: 2, label: "23-29" },
-	{ value: 3, label: "30-39" },
-	{ value: 4, label: "40-49" },
-	{ value: 5, label: "50-59" },
-	{ value: 6, label: "60-69" },
-	{ value: 7, label: "70-79" },
-	{ value: 8, label: "80 and over" },
+	{ value: 1, label: "18-29" },
+	{ value: 2, label: "30-49" },
+	{ value: 3, label: "50-69" },
+	{ value: 4, label: "70 and over" },
 ];
 
 const religiosity = [
@@ -28,27 +24,18 @@ const sectors = [
 const sexOptions = [
 	{ value: 1, label: "Male" },
 	{ value: 2, label: "Female" },
-	{ value: 3, label: "Other" },
 ];
 
 const educationLevels = [
-	{ value: 1, label: "No formal education" },
-	{ value: 2, label: "Elementary school" },
-	{ value: 3, label: "Partial high school" },
-	{ value: 4, label: "Complete high school - without matriculation diploma" },
-	{ value: 5, label: "Complete high school - with matriculation diploma" },
-	{ value: 6, label: "Post high school, non-academic" },
-	{ value: 7, label: "Partial academic degree" },
-	{ value: 8, label: "Full academic degree - BA" },
-	{ value: 9, label: "Full academic degree - MA or higher" },
+	{ value: 1, label: "Up to high school" },
+	{ value: 2, label: "Partial or full academic degree - BA" },
+	{ value: 3, label: "Full academic degree - MA or higher" },
 ];
 
 const ethnicities = [
 	{ value: 1, label: "Ashkenazi" },
 	{ value: 2, label: "Sephardic" },
 	{ value: 3, label: "Mizrachi" },
-	{ value: 5, label: "Both" },
-	{ value: 10, label: "Israeli" },
 	{ value: 99, label: "Other" },
 ];
 ---
@@ -68,14 +55,14 @@ const ethnicities = [
 	<Select
 		id="ageGroup"
 		name="ageGroup"
-		label="Age Group"
+		label="Age"
 		options={ageGroups}
 	/>
 
 	<Select
 		id="educationLevel"
 		name="educationLevel"
-		label="Education Level"
+		label="Education"
 		options={educationLevels}
 	/>
 
@@ -89,19 +76,14 @@ const ethnicities = [
 	<Select
 		id="deprivationScale"
 		name="deprivationScale"
-		label="Deprivation Scale"
+		label="Socio-Economic Scale"
 		options={[
-			{ value: 0, label: "Bottom" },
+			{ value: 0, label: "Most Deprived" },
 			{ value: 1, label: "1" },
 			{ value: 2, label: "2" },
 			{ value: 3, label: "3" },
 			{ value: 4, label: "4" },
-			{ value: 5, label: "5" },
-			{ value: 6, label: "6" },
-			{ value: 7, label: "7" },
-			{ value: 8, label: "8" },
-			{ value: 9, label: "9" },
-			{ value: 10, label: "Top" },
+			{ value: 5, label: "Least Deprived" },
 		]}
 	/>
 </form>
@@ -115,8 +97,6 @@ const ethnicities = [
 		{ value: '1', label: 'Ashkenazi' },
 		{ value: '2', label: 'Sephardic' },
 		{ value: '3', label: 'Mizrachi' },
-		{ value: '5', label: 'Both' },
-		{ value: '10', label: 'Israeli' },
 		{ value: '99', label: 'Other' },
 	];
 
