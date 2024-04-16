@@ -11,11 +11,11 @@ import Chart from "../components/Chart.astro";
 		<title>Prediction Chart</title>
 	</head>
 	<body>
-		<div class="flex justify-center items-center w-full h-screen">
-			<div class="gap-4 w-1/2 p-4">
+		<div class="flex flex-col justify-center items-center w-full h-screen">
+			<div class="gap-4 w-1/2 max-w-[700px] p-4">
 				<Form />
-				<Chart />
 			</div>
+			<Chart />
 		</div>
 	</body>
 </html>

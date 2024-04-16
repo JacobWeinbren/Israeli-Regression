@@ -2,7 +2,9 @@
 
 ---
 
-<canvas id="predictionChart"></canvas>
+<div class="chart-container relative min-w-[600px] w-1/2 h-[80rem]">
+	<canvas id="predictionChart"></canvas>
+</div>
 
 <script>
 	import Chart from "chart.js/auto";
@@ -109,16 +111,37 @@
 									),
 									borderRadius: 5,
 									borderSkipped: false,
-									barThickness: 24, 
+									barThickness: 25,
 								},
 							],
 						},
 						options: {
+							responsive: true, // Ensure the chart is responsive
+							maintainAspectRatio: false,
 							indexAxis: "y",
 							scales: {
 								x: {
 									beginAtZero: true,
 									max: 100,
+									title: {
+										// Add this block
+										display: true,
+										text: "Percentage",
+										color: "black",
+										font: {
+											family: "system-ui",
+											size: 20,
+										},
+									},
+								},
+								y: {
+									ticks: {
+										font: {
+											family: "system-ui",
+											size: 20,
+											weight: "normal",
+										},
+									},
 								},
 							},
 							plugins: {
@@ -128,12 +151,13 @@
 								title: {
 									display: true,
 									text: "Probability of Voting for Party",
+									color: "black",
+									font: {
+										family: "system-ui",
+										size: 25,
+										weight: "bold",
+									},
 								},
-							},
-							font: {
-								family: "Arial, sans-serif",
-								size: 14,
-								weight: "bold",
 							},
 						},
 					});
