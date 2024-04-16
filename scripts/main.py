@@ -2,7 +2,6 @@
 
 from sklearn.pipeline import Pipeline
 from imblearn.pipeline import Pipeline as ImbPipeline
-from imblearn.over_sampling import SMOTE
 from sklearn.impute import KNNImputer
 from sklearn.preprocessing import (
     StandardScaler,
@@ -23,6 +22,7 @@ import numpy as np
 import pyreadstat
 import joblib
 import pandas as pd
+from imblearn.over_sampling import BorderlineSMOTE
 
 # Custom logging setup
 logging.basicConfig(
@@ -114,11 +114,7 @@ def create_pipeline():
     preprocessor = ColumnTransformer(
         transformers=[
             ("num", numeric_transformer, ["age_group", "v144", "v712_groups"]),
-            (
-                "cat",
-                categorical_transformer,
-                ["recode_v131", "sex", "educ_group"],
-            ),
+            ("cat", categorical_transformer, ["recode_v131", "sex", "educ_group"]),
         ]
     )
 
@@ -127,7 +123,13 @@ def create_pipeline():
             ("preprocessor", preprocessor),
             (
                 "classifier",
-                XGBClassifier(eval_metric="mlogloss", use_label_encoder=False),
+                XGBClassifier(
+                    eval_metric="mlogloss",
+                    use_label_encoder=False,
+                    max_depth=10,
+                    n_estimators=300,
+                    learning_rate=0.05,
+                ),
             ),
         ]
     )
@@ -191,15 +193,17 @@ def main():
 
     # Set n_neighbors to one less than the number of samples in the smallest class
     min_k_neighbors = 5  # Set a minimum threshold for k_neighbors
-    smote_arab = SMOTE(
+    smote_arab = BorderlineSMOTE(
         sampling_strategy="auto",
         random_state=42,
         k_neighbors=min(max(1, min_class_size_arab - 1), min_k_neighbors),
+        kind="borderline-1",  # or "borderline-2" based on specific needs
     )
-    smote_jewish = SMOTE(
+    smote_jewish = BorderlineSMOTE(
         sampling_strategy="auto",
         random_state=42,
         k_neighbors=min(max(1, min_class_size_jewish - 1), min_k_neighbors),
+        kind="borderline-1",  # or "borderline-2"
     )
 
     # Apply SMOTE
@@ -238,8 +242,8 @@ def main():
     unique_jewish, counts_jewish = np.unique(y_jewish_train, return_counts=True)
     min_class_size_jewish = counts_jewish.min()
 
-    cv_strategy_arab = StratifiedKFold(n_splits=10)
-    cv_strategy_jewish = StratifiedKFold(n_splits=10)
+    cv_strategy_arab = StratifiedKFold(n_splits=min_class_size_arab)
+    cv_strategy_jewish = StratifiedKFold(n_splits=min_class_size_jewish)
 
     search_arab = RandomizedSearchCV(
         pipeline_arab,
