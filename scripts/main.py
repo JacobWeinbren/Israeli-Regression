@@ -291,13 +291,13 @@ def main():
     study_arab = optuna.create_study(direction="maximize")
     study_arab.optimize(
         lambda trial: objective(trial, X_arab_train, y_arab_train, pipeline_arab),
-        n_trials=1,
+        n_trials=200,
     )
 
     study_jewish = optuna.create_study(direction="maximize")
     study_jewish.optimize(
         lambda trial: objective(trial, X_jewish_train, y_jewish_train, pipeline_jewish),
-        n_trials=1,
+        n_trials=70,
     )
 
     best_pipeline_arab = pipeline_arab.set_params(
