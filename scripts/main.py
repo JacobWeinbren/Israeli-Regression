@@ -25,6 +25,9 @@ from imblearn.over_sampling import BorderlineSMOTE
 from sklearn.calibration import CalibratedClassifierCV
 from skopt import BayesSearchCV
 from skopt.space import Real, Integer
+import optuna
+from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import cross_val_score
 
 # Custom logging setup
 logging.basicConfig(
@@ -249,74 +252,88 @@ def main():
     pipeline_arab = create_pipeline(min_class_size_arab)
     pipeline_jewish = create_pipeline(min_class_size_jewish)
 
-    param_grid = {
-        "classifier__estimator__max_depth": Integer(3, 20),
-        "classifier__estimator__min_child_weight": Integer(1, 15),
-        "classifier__estimator__learning_rate": Real(0.001, 0.3),
-        "classifier__estimator__n_estimators": Integer(100, 1000),
-        "classifier__estimator__colsample_bytree": Real(0.3, 1.0),
-        "classifier__estimator__subsample": Real(0.5, 1.0),
-        "classifier__estimator__gamma": Real(0, 1.0),
-        "classifier__estimator__reg_alpha": Real(0, 5),
-        "classifier__estimator__reg_lambda": Real(0.5, 5),
-    }
+    # Unified Optuna objective function
+    def objective(trial, X_train, y_train, pipeline):
+        param = {
+            "classifier__estimator__max_depth": trial.suggest_int("max_depth", 3, 20),
+            "classifier__estimator__min_child_weight": trial.suggest_int(
+                "min_child_weight", 1, 15
+            ),
+            "classifier__estimator__learning_rate": trial.suggest_float(
+                "learning_rate", 0.001, 0.3, log=True
+            ),
+            "classifier__estimator__n_estimators": trial.suggest_int(
+                "n_estimators", 100, 1000
+            ),
+            "classifier__estimator__colsample_bytree": trial.suggest_float(
+                "colsample_bytree", 0.3, 1.0
+            ),
+            "classifier__estimator__subsample": trial.suggest_float(
+                "subsample", 0.5, 1.0
+            ),
+            "classifier__estimator__gamma": trial.suggest_float("gamma", 0, 1.0),
+            "classifier__estimator__reg_alpha": trial.suggest_float("reg_alpha", 0, 5),
+            "classifier__estimator__reg_lambda": trial.suggest_float(
+                "reg_lambda", 0.5, 5
+            ),
+        }
+        pipeline.set_params(**param)
+        try:
+            score = np.mean(
+                cross_val_score(pipeline, X_train, y_train, cv=5, scoring="roc_auc_ovr")
+            )
+        except ValueError as e:
+            print(f"Error during scoring: {e}")
+            return None
+        return score
 
-    # Determine the smallest class size in the training data using numpy
-    unique_arab, counts_arab = np.unique(y_arab_train, return_counts=True)
-    min_class_size_arab = counts_arab.min()
-    unique_jewish, counts_jewish = np.unique(y_jewish_train, return_counts=True)
-    min_class_size_jewish = counts_jewish.min()
-
-    # Increase the number of splits in cross-validation
-    cv_strategy_arab = StratifiedKFold(n_splits=min(min_class_size_arab, 10))
-    cv_strategy_jewish = StratifiedKFold(n_splits=min(min_class_size_jewish, 10))
-
-    # Define a custom scorer that specifies the multi_class mode
-    roc_auc_scorer = make_scorer(roc_auc_score, needs_proba=True, multi_class="ovo")
-
-    search_arab = BayesSearchCV(
-        pipeline_arab,
-        param_grid,
-        n_iter=50,
-        scoring=roc_auc_scorer,
-        cv=cv_strategy_arab,
-        verbose=3,
-        n_jobs=-1,
-        random_state=42,
-    )
-    search_jewish = BayesSearchCV(
-        pipeline_jewish,
-        param_grid,
-        n_iter=50,
-        scoring=roc_auc_scorer,
-        cv=cv_strategy_jewish,
-        verbose=3,
-        n_jobs=-1,
-        random_state=42,
+    # Optuna studies for each sector
+    study_arab = optuna.create_study(direction="maximize")
+    study_arab.optimize(
+        lambda trial: objective(trial, X_arab_train, y_arab_train, pipeline_arab),
+        n_trials=1,
     )
 
-    # Train each model using RandomizedSearchCV
-    search_arab.fit(X_arab_train, y_arab_train)
-    search_jewish.fit(X_jewish_train, y_jewish_train)
+    study_jewish = optuna.create_study(direction="maximize")
+    study_jewish.optimize(
+        lambda trial: objective(trial, X_jewish_train, y_jewish_train, pipeline_jewish),
+        n_trials=1,
+    )
 
-    # Best models after hyperparameter tuning
-    best_model_arab = search_arab.best_estimator_
-    best_model_jewish = search_jewish.best_estimator_
+    best_pipeline_arab = pipeline_arab.set_params(
+        **{
+            "classifier__estimator__" + key: value
+            for key, value in study_arab.best_params.items()
+        }
+    )
+    best_pipeline_jewish = pipeline_jewish.set_params(
+        **{
+            "classifier__estimator__" + key: value
+            for key, value in study_jewish.best_params.items()
+        }
+    )
+
+    # Train the best models
+    best_pipeline_arab.fit(X_arab_train, y_arab_train)
+    best_pipeline_jewish.fit(X_jewish_train, y_jewish_train)
 
     # Make predictions with the best models
-    y_arab_pred = best_model_arab.predict_proba(X_arab_test)
-    y_jewish_pred = best_model_jewish.predict_proba(X_jewish_test)
+    y_arab_pred = best_pipeline_arab.predict_proba(X_arab_test)
+    y_jewish_pred = best_pipeline_jewish.predict_proba(X_jewish_test)
 
     # Evaluate models
     arab_auc = roc_auc_score(y_arab_test, y_arab_pred, multi_class="ovo")
     jewish_auc = roc_auc_score(y_jewish_test, y_jewish_pred, multi_class="ovo")
 
+    # Log the AUC scores
     logging.info(f"Arab sector AUC: {arab_auc}")
     logging.info(f"Jewish sector AUC: {jewish_auc}")
 
-    # Save the best models
-    joblib.dump(best_model_arab, "output/best_model_arab.joblib")
-    joblib.dump(best_model_jewish, "output/best_model_jewish.joblib")
+    # Optionally, save the model
+    joblib.dump(best_pipeline_arab, "output/best_model_arab.joblib")
+    joblib.dump(best_pipeline_jewish, "output/best_model_jewish.joblib")
+
+    return arab_auc, jewish_auc
 
 
 if __name__ == "__main__":
