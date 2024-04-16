@@ -22,6 +22,7 @@ import logging
 import numpy as np
 import pyreadstat
 import joblib
+import pandas as pd
 
 # Custom logging setup
 logging.basicConfig(
@@ -33,39 +34,63 @@ def load_and_prepare_data(filepath):
     df, meta = pyreadstat.read_sav(filepath)
     logging.info(f"Data loaded with shape {df.shape}")
 
-    # Group categories 16, 17, 18, 19, 20, 21, 30 under 16 in v104
-    group_categories = [16, 17, 18, 19, 20, 21, 30]
-    df["v104"] = df["v104"].replace(group_categories, 16)
-
     # Filter out unwanted 'don't know' and 'other' categories
     df = df[df["v712"] != 98]  # Remove 'Don't know' from v712
     df = df[df["v131"] != 98]  # Remove 'Don't know' from v131
-    unwanted_v104 = [94, 96, 97, 98, 99]
+    unwanted_v104 = [16, 17, 18, 19, 20, 21, 30, 94, 96, 97, 98, 99]
     df = df[~df["v104"].isin(unwanted_v104)]  # Remove specified categories from v104
 
     logging.info(f"Data after filtering unwanted categories: {df.shape}")
 
-    # Ensuring each class has at least a minimum number of samples
-    min_samples_per_class = 5
-    class_counts = df["v104"].value_counts()
-    valid_classes = class_counts[class_counts >= min_samples_per_class].index
-    df = df[df["v104"].isin(valid_classes)]
-    logging.info(f"Data after filtering small classes: {df.shape}")
+    # Manually group v712 into bins
+    bins = [-1, 1, 3, 5, 7, 9, 11]  # Define bin edges
+    labels = [0, 1, 2, 3, 4, 5]  # Define labels for each bin
+    df["v712_groups"] = pd.cut(df["v712"], bins=bins, labels=labels)
 
-    recode_map = {1.0: 1, 2.0: 2, 3.0: 3, 5.0: 5, 10.0: 10}
     # Adjust recode_v131 based on sector
+    recode_map = {1.0: 1, 2.0: 2, 3.0: 3}
     df["recode_v131"] = df.apply(
         lambda row: 0 if row["sector"] == 2 else recode_map.get(row["v131"], 99), axis=1
     )
 
+    # Remove 'Other' from sex
+    df = df[df["sex"] != 3]
+
+    # Group education into categories
+    education_map = {
+        1: 1,
+        2: 1,
+        3: 1,
+        4: 1,
+        5: 1,
+        6: 1,
+        7: 2,
+        8: 2,
+        9: 3,
+    }
+    df["educ_group"] = df["educ"].map(education_map)
+
+    # Group age into categories, combining 7 and 8
+    age_map = {
+        1: 1,
+        2: 1,
+        3: 2,
+        4: 2,
+        5: 3,
+        6: 3,
+        7: 4,
+        8: 4,
+    }
+    df["age_group"] = df["age_group"].map(age_map)
+
     selected_features = [
         "age_group",
         "v144",
-        "v712",
+        "v712_groups",
         "recode_v131",
         "sector",
         "sex",
-        "educ",
+        "educ_group",
     ]
     X = df[selected_features]
     y = df["v104"]
@@ -88,11 +113,11 @@ def create_pipeline():
 
     preprocessor = ColumnTransformer(
         transformers=[
-            ("num", numeric_transformer, ["age_group", "v144", "v712"]),
+            ("num", numeric_transformer, ["age_group", "v144", "v712_groups"]),
             (
                 "cat",
                 categorical_transformer,
-                ["recode_v131", "sex", "educ"],
+                ["recode_v131", "sex", "educ_group"],
             ),
         ]
     )
@@ -205,14 +230,26 @@ def main():
     scorer = make_scorer(
         roc_auc_score, multi_class="ovo", response_method="predict_proba"
     )
-    cv_strategy = StratifiedKFold(n_splits=25)
+
+    # Determine the smallest class size in the training data using numpy
+    unique_arab, counts_arab = np.unique(y_arab_train, return_counts=True)
+    min_class_size_arab = counts_arab.min()
+    unique_jewish, counts_jewish = np.unique(y_jewish_train, return_counts=True)
+    min_class_size_jewish = counts_jewish.min()
+
+    # Log the class labels and their counts
+    logging.info(f"Arab class counts: {dict(zip(unique_arab, counts_arab))}")
+    logging.info(f"Jewish class counts: {dict(zip(unique_jewish, counts_jewish))}")
+
+    cv_strategy_arab = StratifiedKFold(n_splits=10)
+    cv_strategy_jewish = StratifiedKFold(n_splits=10)
 
     search_arab = RandomizedSearchCV(
         pipeline_arab,
         param_grid,
-        n_iter=7000,
+        n_iter=10,
         scoring=scorer,
-        cv=cv_strategy,
+        cv=cv_strategy_arab,
         verbose=3,
         error_score="raise",
         n_jobs=-1,
@@ -221,9 +258,9 @@ def main():
     search_jewish = RandomizedSearchCV(
         pipeline_jewish,
         param_grid,
-        n_iter=7000,
+        n_iter=10,
         scoring=scorer,
-        cv=cv_strategy,
+        cv=cv_strategy_jewish,
         verbose=3,
         error_score="raise",
         n_jobs=-1,

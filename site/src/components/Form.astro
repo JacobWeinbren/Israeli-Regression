@@ -54,6 +54,15 @@ const ethnicities = [
 ---
 
 <form class="flex flex-col" id="predictionForm">
+	<Select id="sector" name="sector" label="Sector" options={sectors} />
+
+	<Select
+		id="ethnicity"
+		name="ethnicity"
+		label="Ethnicity"
+		options={ethnicities}
+	/>
+
 	<Select id="sex" name="sex" label="Sex" options={sexOptions} />
 
 	<Select
@@ -68,15 +77,6 @@ const ethnicities = [
 		name="educationLevel"
 		label="Education Level"
 		options={educationLevels}
-	/>
-
-	<Select id="sector" name="sector" label="Sector" options={sectors} />
-
-	<Select
-		id="ethnicity"
-		name="ethnicity"
-		label="Ethnicity"
-		options={ethnicities}
 	/>
 
 	<Select
