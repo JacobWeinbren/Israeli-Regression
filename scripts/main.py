@@ -104,14 +104,14 @@ def load_and_prepare_data(filepath):
 
 
 def create_pipeline(min_samples):
-    k_neighbors = min(min_samples - 1, 5)
+    k_neighbors = max(min_samples - 1, 1)
 
     if min_samples <= 2:
         k_neighbors = 1
 
     numeric_transformer = Pipeline(
         steps=[
-            ("imputer", KNNImputer(n_neighbors=2)),
+            ("imputer", KNNImputer(n_neighbors=3)),
             ("scaler", StandardScaler()),
             (
                 "poly",
@@ -129,19 +129,23 @@ def create_pipeline(min_samples):
             ("onehot", OneHotEncoder(handle_unknown="ignore")),
             (
                 "poly",
-                PolynomialFeatures(degree=2, interaction_only=True, include_bias=False),
+                PolynomialFeatures(degree=3, interaction_only=True, include_bias=False),
             ),
         ]
     )
 
     preprocessor = ColumnTransformer(
         transformers=[
-            ("num", numeric_transformer, ["age_group", "v144", "v712_groups"]),
-            ("cat", categorical_transformer, ["recode_v131", "sex", "educ_group"]),
+            ("num", numeric_transformer, ["age_group", "v712_groups"]),
+            (
+                "cat",
+                categorical_transformer,
+                ["recode_v131", "sex", "educ_group", "v144"],
+            ),
             (
                 "cat_interact",
                 interaction_transformer,
-                ["recode_v131", "sex", "educ_group"],
+                ["recode_v131", "sex", "educ_group", "v144"],
             ),
         ]
     )
@@ -153,15 +157,15 @@ def create_pipeline(min_samples):
     xgb_classifier = XGBClassifier(
         eval_metric="mlogloss",
         use_label_encoder=False,
-        max_depth=2,
-        min_child_weight=10,
-        n_estimators=200,
-        learning_rate=0.01,
-        gamma=0.5,
-        reg_alpha=2,
-        reg_lambda=3,
-        subsample=0.5,
-        colsample_bytree=0.4,
+        max_depth=4,
+        min_child_weight=5,
+        n_estimators=300,
+        learning_rate=0.05,
+        gamma=0.3,
+        reg_alpha=1,
+        reg_lambda=2,
+        subsample=0.7,
+        colsample_bytree=0.5,
     )
 
     calibrated_clf = CalibratedClassifierCV(
@@ -297,7 +301,7 @@ def main():
     study_jewish = optuna.create_study(direction="maximize")
     study_jewish.optimize(
         lambda trial: objective(trial, X_jewish_train, y_jewish_train, pipeline_jewish),
-        n_trials=70,
+        n_trials=100,
     )
 
     best_pipeline_arab = pipeline_arab.set_params(
