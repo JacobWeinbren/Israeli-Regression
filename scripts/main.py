@@ -205,12 +205,12 @@ def main():
     scorer = make_scorer(
         roc_auc_score, multi_class="ovo", response_method="predict_proba"
     )
-    cv_strategy = StratifiedKFold(n_splits=20)
+    cv_strategy = StratifiedKFold(n_splits=25)
 
     search_arab = RandomizedSearchCV(
         pipeline_arab,
         param_grid,
-        n_iter=10,
+        n_iter=7000,
         scoring=scorer,
         cv=cv_strategy,
         verbose=3,
@@ -221,7 +221,7 @@ def main():
     search_jewish = RandomizedSearchCV(
         pipeline_jewish,
         param_grid,
-        n_iter=10,
+        n_iter=7000,
         scoring=scorer,
         cv=cv_strategy,
         verbose=3,
