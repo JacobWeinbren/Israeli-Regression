@@ -117,7 +117,7 @@ def load_and_prepare_data(filepath):
     return X, y
 
 
-def create_pipeline(min_samples, dataset_type):
+def create_pipeline(min_samples):
     k_neighbors = min(min_samples - 1, 5)
     if min_samples <= 2:
         k_neighbors = 1
@@ -263,12 +263,8 @@ def main():
     min_class_size_jewish = counts_jewish.min()
 
     # Create pipelines for each sector
-    pipeline_arab = create_pipeline(
-        min_samples=min_class_size_arab, dataset_type="Arab"
-    )
-    pipeline_jewish = create_pipeline(
-        min_samples=min_class_size_jewish, dataset_type="Jewish"
-    )
+    pipeline_arab = create_pipeline(min_samples=min_class_size_arab)
+    pipeline_jewish = create_pipeline(min_samples=min_class_size_jewish)
 
     # Unified Optuna objective function
     def objective(trial, X_train, y_train, pipeline):
