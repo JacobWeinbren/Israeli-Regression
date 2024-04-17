@@ -28,6 +28,10 @@ from sklearn.model_selection import cross_val_score
 from pandas.api.types import CategoricalDtype
 import pandas as pd
 from dask_ml.preprocessing import StandardScaler, Categorizer, DummyEncoder
+from sklearn.experimental import enable_iterative_imputer
+from sklearn.impute import IterativeImputer
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
+from sklearn.calibration import CalibratedClassifierCV
 
 # Custom logging setup
 logging.basicConfig(
@@ -114,10 +118,7 @@ def create_pipeline(min_samples):
 
     numeric_transformer = Pipeline(
         [
-            (
-                "imputer",
-                KNNImputer(n_neighbors=3),
-            ),
+            ("imputer", IterativeImputer(random_state=42)),
             ("scaler", StandardScaler()),
             (
                 "poly",
@@ -153,24 +154,31 @@ def create_pipeline(min_samples):
         sampling_strategy="auto", k_neighbors=k_neighbors, random_state=42
     )
 
-    # Define the classifier
+    # Define the classifiers
     xgb_classifier = XGBClassifier(
         eval_metric="mlogloss",
         use_label_encoder=False,
         max_depth=2,
-        min_child_weight=10,
-        n_estimators=200,
-        learning_rate=0.01,
-        gamma=0.5,
-        reg_alpha=2,
-        reg_lambda=3,
-        subsample=0.5,
-        colsample_bytree=0.4,
+        min_child_weight=5,
+        n_estimators=300,
+        learning_rate=0.05,
+        gamma=1,
+        reg_alpha=1,
+        reg_lambda=2,
+        subsample=0.7,
+        colsample_bytree=0.5,
+    )
+
+    rf_classifier = RandomForestClassifier(n_estimators=100)
+
+    # Define the Voting Classifier
+    voting_clf = VotingClassifier(
+        estimators=[("xgb", xgb_classifier), ("rf", rf_classifier)], voting="soft"
     )
 
     # Calibrated classifier to improve probability predictions
     calibrated_clf = CalibratedClassifierCV(
-        estimator=xgb_classifier,
+        estimator=voting_clf,
         cv=3,
         method="sigmoid",
     )
@@ -261,26 +269,30 @@ def main():
     # Unified Optuna objective function
     def objective(trial, X_train, y_train, pipeline):
         param = {
-            "classifier__estimator__max_depth": trial.suggest_int("max_depth", 3, 20),
-            "classifier__estimator__min_child_weight": trial.suggest_int(
-                "min_child_weight", 1, 15
+            "classifier__estimator__xgb__max_depth": trial.suggest_int(
+                "max_depth", 2, 10
             ),
-            "classifier__estimator__learning_rate": trial.suggest_float(
-                "learning_rate", 0.001, 0.3, log=True
+            "classifier__estimator__xgb__min_child_weight": trial.suggest_int(
+                "min_child_weight", 1, 20
             ),
-            "classifier__estimator__n_estimators": trial.suggest_int(
-                "n_estimators", 100, 1000
+            "classifier__estimator__xgb__learning_rate": trial.suggest_float(
+                "learning_rate", 0.005, 0.2, log=True
             ),
-            "classifier__estimator__colsample_bytree": trial.suggest_float(
-                "colsample_bytree", 0.3, 1.0
+            "classifier__estimator__xgb__n_estimators": trial.suggest_int(
+                "n_estimators", 50, 500
             ),
-            "classifier__estimator__subsample": trial.suggest_float(
-                "subsample", 0.5, 1.0
+            "classifier__estimator__xgb__colsample_bytree": trial.suggest_float(
+                "colsample_bytree", 0.3, 0.9
             ),
-            "classifier__estimator__gamma": trial.suggest_float("gamma", 0, 1.0),
-            "classifier__estimator__reg_alpha": trial.suggest_float("reg_alpha", 0, 5),
-            "classifier__estimator__reg_lambda": trial.suggest_float(
-                "reg_lambda", 0.5, 5
+            "classifier__estimator__xgb__subsample": trial.suggest_float(
+                "subsample", 0.4, 0.9
+            ),
+            "classifier__estimator__xgb__gamma": trial.suggest_float("gamma", 0, 5),
+            "classifier__estimator__xgb__reg_alpha": trial.suggest_float(
+                "reg_alpha", 0, 5
+            ),
+            "classifier__estimator__xgb__reg_lambda": trial.suggest_float(
+                "reg_lambda", 0.5, 10
             ),
         }
         pipeline.set_params(**param)
@@ -297,13 +309,13 @@ def main():
     study_arab = optuna.create_study(direction="maximize")
     study_arab.optimize(
         lambda trial: objective(trial, X_arab_train, y_arab_train, pipeline_arab),
-        n_trials=200,
+        n_trials=1000,
     )
 
     study_jewish = optuna.create_study(direction="maximize")
     study_jewish.optimize(
         lambda trial: objective(trial, X_jewish_train, y_jewish_train, pipeline_jewish),
-        n_trials=100,
+        n_trials=1000,
     )
 
     best_pipeline_arab = pipeline_arab.set_params(
