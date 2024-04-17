@@ -10,26 +10,20 @@ from sklearn.model_selection import (
 )
 from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import (
-    StandardScaler,
     PolynomialFeatures,
-    OneHotEncoder,
     LabelEncoder,
 )
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from imblearn.pipeline import Pipeline as ImbPipeline
-from sklearn.impute import KNNImputer
 from xgboost import XGBClassifier
 from imblearn.over_sampling import BorderlineSMOTE
 from sklearn.calibration import CalibratedClassifierCV
 import optuna
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import cross_val_score
-from pandas.api.types import CategoricalDtype
 import pandas as pd
-from dask_ml.preprocessing import StandardScaler, Categorizer, DummyEncoder
-from sklearn.experimental import enable_iterative_imputer
-from sklearn.impute import IterativeImputer
+from dask_ml.preprocessing import Categorizer, DummyEncoder
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.calibration import CalibratedClassifierCV
 
@@ -49,10 +43,10 @@ def load_and_prepare_data(filepath):
     unwanted_v104 = [16, 17, 18, 19, 20, 21, 30, 94, 96, 97, 98, 99]
     df = df[~df["v104"].isin(unwanted_v104)]  # Remove specified categories from v104
 
-    # Manually group v712 into bins
+    # Manually group v712 into bins and make it ordinal
     bins = [-1, 1, 3, 5, 7, 9, 11]  # Define bin edges
     labels = [0, 1, 2, 3, 4, 5]  # Define labels for each bin
-    df["v712_groups"] = pd.cut(df["v712"], bins=bins, labels=labels)
+    df["v712_groups"] = pd.cut(df["v712"], bins=bins, labels=labels, ordered=True)
 
     # Adjust recode_v131 based on sector
     recode_map = {1.0: 1, 2.0: 2, 3.0: 3}
@@ -63,7 +57,7 @@ def load_and_prepare_data(filepath):
     # Remove 'Other' from sex
     df = df[df["sex"] != 3]
 
-    # Group education into categories
+    # Group education into categories and make it ordinal
     education_map = {
         1: 1,
         2: 1,
@@ -75,9 +69,11 @@ def load_and_prepare_data(filepath):
         8: 2,
         9: 3,
     }
-    df["educ_group"] = df["educ"].map(education_map)
+    df["educ_group"] = (
+        df["educ"].map(education_map).astype(pd.CategoricalDtype(ordered=True))
+    )
 
-    # Group age into categories
+    # Group age into categories and make it ordinal
     age_map = {
         1: 1,
         2: 1,
@@ -88,7 +84,9 @@ def load_and_prepare_data(filepath):
         7: 4,
         8: 4,
     }
-    df["age_group"] = df["age_group"].map(age_map)
+    df["age_group"] = (
+        df["age_group"].map(age_map).astype(pd.CategoricalDtype(ordered=True))
+    )
 
     selected_features = [
         "age_group",
@@ -103,11 +101,10 @@ def load_and_prepare_data(filepath):
     X = df[selected_features]
     y = df["v104"]
 
-    # Define the categorical type with explicit categories
-    cat_type = CategoricalDtype(categories=[1.0, 2.0, 3.0, 4.0, 5.0], ordered=True)
-
-    # Convert the column to the defined categorical type
-    df["v144"] = df["v144"].astype(cat_type)
+    # Define the categorical type with explicit categories and make it ordinal
+    cat_type = pd.CategoricalDtype(categories=[1.0, 2.0, 3.0, 4.0, 5.0], ordered=True)
+    df["v144"] = df["v144"].astype(cat_type)  # religiosity
+    df["v111"] = df["v111"].astype(cat_type)  # left-right political spectrum
 
     return X, y
 
@@ -158,13 +155,13 @@ def create_pipeline(min_samples, dataset_type):
         "eval_metric": "mlogloss",
         "use_label_encoder": False,
         "max_depth": 2,
-        "min_child_weight": 50,
+        "min_child_weight": 100,
         "n_estimators": 50,
         "learning_rate": 0.01,
-        "gamma": 10,
-        "reg_alpha": 200,
-        "reg_lambda": 200,
-        "subsample": 0.4,
+        "gamma": 15,
+        "reg_alpha": 300,
+        "reg_lambda": 300,
+        "subsample": 0.5,
         "colsample_bytree": 0.2,
     }
 
