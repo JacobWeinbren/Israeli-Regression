@@ -122,7 +122,7 @@ def create_pipeline(min_samples):
             ("scaler", StandardScaler()),
             (
                 "poly",
-                PolynomialFeatures(degree=2, interaction_only=True, include_bias=False),
+                PolynomialFeatures(degree=1, interaction_only=True, include_bias=False),
             ),
         ]
     )
@@ -133,7 +133,7 @@ def create_pipeline(min_samples):
             ("encoder", DummyEncoder()),
             (
                 "poly",
-                PolynomialFeatures(degree=2, interaction_only=True, include_bias=False),
+                PolynomialFeatures(degree=1, interaction_only=True, include_bias=False),
             ),
         ]
     )
@@ -158,15 +158,15 @@ def create_pipeline(min_samples):
     xgb_classifier = XGBClassifier(
         eval_metric="mlogloss",
         use_label_encoder=False,
-        max_depth=3,
-        min_child_weight=10,
+        max_depth=2,
+        min_child_weight=20,
         n_estimators=1000,
-        learning_rate=0.05,
-        gamma=1,
-        reg_alpha=2,
-        reg_lambda=5,
-        subsample=0.6,
-        colsample_bytree=0.4,
+        learning_rate=0.01,
+        gamma=3,
+        reg_alpha=10,
+        reg_lambda=15,
+        subsample=0.5,
+        colsample_bytree=0.3,
     )
 
     rf_classifier = RandomForestClassifier(n_estimators=80)
@@ -309,13 +309,13 @@ def main():
     study_arab = optuna.create_study(direction="maximize")
     study_arab.optimize(
         lambda trial: objective(trial, X_arab_train, y_arab_train, pipeline_arab),
-        n_trials=1000,
+        n_trials=5,
     )
 
     study_jewish = optuna.create_study(direction="maximize")
     study_jewish.optimize(
         lambda trial: objective(trial, X_jewish_train, y_jewish_train, pipeline_jewish),
-        n_trials=1000,
+        n_trials=5,
     )
 
     # Correctly set parameters for the XGBClassifier within the VotingClassifier
