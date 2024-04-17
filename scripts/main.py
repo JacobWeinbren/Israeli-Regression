@@ -158,18 +158,18 @@ def create_pipeline(min_samples):
     xgb_classifier = XGBClassifier(
         eval_metric="mlogloss",
         use_label_encoder=False,
-        max_depth=4,
-        min_child_weight=5,
-        n_estimators=300,
+        max_depth=3,
+        min_child_weight=10,
+        n_estimators=1000,
         learning_rate=0.05,
         gamma=1,
-        reg_alpha=1,
-        reg_lambda=2,
-        subsample=0.7,
-        colsample_bytree=0.5,
+        reg_alpha=2,
+        reg_lambda=5,
+        subsample=0.6,
+        colsample_bytree=0.4,
     )
 
-    rf_classifier = RandomForestClassifier(n_estimators=100)
+    rf_classifier = RandomForestClassifier(n_estimators=80)
 
     # Define the Voting Classifier
     voting_clf = VotingClassifier(
