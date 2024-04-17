@@ -157,15 +157,15 @@ def create_pipeline(min_samples, dataset_type):
     xgb_params = {
         "eval_metric": "mlogloss",
         "use_label_encoder": False,
-        "max_depth": 3,
-        "min_child_weight": 25,
-        "n_estimators": 80,
+        "max_depth": 2,
+        "min_child_weight": 50,
+        "n_estimators": 50,
         "learning_rate": 0.01,
-        "gamma": 5,
-        "reg_alpha": 100,
-        "reg_lambda": 100,
-        "subsample": 0.5,
-        "colsample_bytree": 0.3,
+        "gamma": 10,
+        "reg_alpha": 200,
+        "reg_lambda": 200,
+        "subsample": 0.4,
+        "colsample_bytree": 0.2,
     }
 
     xgb_classifier = XGBClassifier(**xgb_params)
@@ -308,13 +308,13 @@ def main():
     study_arab = optuna.create_study(direction="maximize")
     study_arab.optimize(
         lambda trial: objective(trial, X_arab_train, y_arab_train, pipeline_arab),
-        n_trials=5,
+        n_trials=1000,
     )
 
     study_jewish = optuna.create_study(direction="maximize")
     study_jewish.optimize(
         lambda trial: objective(trial, X_jewish_train, y_jewish_train, pipeline_jewish),
-        n_trials=5,
+        n_trials=1000,
     )
 
     # Correctly set parameters for the XGBClassifier within the VotingClassifier
