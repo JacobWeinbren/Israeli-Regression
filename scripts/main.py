@@ -110,7 +110,7 @@ def load_and_prepare_data(filepath):
 
     # Define the categorical type for political spectrum with explicit categories and make it ordinal
     cat_type_political = pd.CategoricalDtype(
-        categories=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], ordered=True
+        categories=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], ordered=True
     )
     df["v111"] = df["v111"].astype(cat_type_political)  # left-right political spectrum
 
@@ -309,13 +309,13 @@ def main():
     study_arab = optuna.create_study(direction="maximize")
     study_arab.optimize(
         lambda trial: objective(trial, X_arab_train, y_arab_train, pipeline_arab),
-        n_trials=1000,
+        n_trials=2000,
     )
 
     study_jewish = optuna.create_study(direction="maximize")
     study_jewish.optimize(
         lambda trial: objective(trial, X_jewish_train, y_jewish_train, pipeline_jewish),
-        n_trials=1000,
+        n_trials=2000,
     )
 
     # Correctly set parameters for the XGBClassifier within the VotingClassifier
