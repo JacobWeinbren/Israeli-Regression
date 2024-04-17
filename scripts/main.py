@@ -98,6 +98,7 @@ def load_and_prepare_data(filepath):
         "sector",
         "sex",
         "educ_group",
+        "v111",
     ]
     X = df[selected_features]
     y = df["v104"]
@@ -111,21 +112,10 @@ def load_and_prepare_data(filepath):
     return X, y
 
 
-def create_pipeline(min_samples):
+def create_pipeline(min_samples, dataset_type):
     k_neighbors = min(min_samples - 1, 5)
     if min_samples <= 2:
         k_neighbors = 1
-
-    numeric_transformer = Pipeline(
-        [
-            ("imputer", IterativeImputer(random_state=42)),
-            ("scaler", StandardScaler()),
-            (
-                "poly",
-                PolynomialFeatures(degree=1, interaction_only=True, include_bias=False),
-            ),
-        ]
-    )
 
     categorical_transformer = Pipeline(
         [
@@ -133,57 +123,62 @@ def create_pipeline(min_samples):
             ("encoder", DummyEncoder()),
             (
                 "poly",
-                PolynomialFeatures(degree=1, interaction_only=True, include_bias=False),
+                PolynomialFeatures(
+                    degree=1,
+                    interaction_only=True,
+                    include_bias=False,
+                ),
             ),
         ]
     )
 
     preprocessor = ColumnTransformer(
         transformers=[
-            ("num", numeric_transformer, ["age_group", "v712_groups"]),
             (
                 "cat",
                 categorical_transformer,
-                ["recode_v131", "sex", "educ_group", "v144"],
+                [
+                    "recode_v131",
+                    "sex",
+                    "educ_group",
+                    "v144",
+                    "v712_groups",
+                    "age_group",
+                    "v111",
+                ],
             ),
         ]
     )
 
-    # Define the SMOTE for handling imbalanced data
     smote = BorderlineSMOTE(
         sampling_strategy="auto", k_neighbors=k_neighbors, random_state=42
     )
 
-    # Define the classifiers
-    xgb_classifier = XGBClassifier(
-        eval_metric="mlogloss",
-        use_label_encoder=False,
-        max_depth=2,
-        min_child_weight=20,
-        n_estimators=300,
-        learning_rate=0.01,
-        gamma=3,
-        reg_alpha=20,
-        reg_lambda=30,
-        subsample=0.7,
-        colsample_bytree=0.5,
-    )
+    xgb_params = {
+        "eval_metric": "mlogloss",
+        "use_label_encoder": False,
+        "max_depth": 3,
+        "min_child_weight": 25,
+        "n_estimators": 80,
+        "learning_rate": 0.01,
+        "gamma": 5,
+        "reg_alpha": 100,
+        "reg_lambda": 100,
+        "subsample": 0.5,
+        "colsample_bytree": 0.3,
+    }
 
+    xgb_classifier = XGBClassifier(**xgb_params)
     rf_classifier = RandomForestClassifier(n_estimators=80)
 
-    # Define the Voting Classifier
     voting_clf = VotingClassifier(
         estimators=[("xgb", xgb_classifier), ("rf", rf_classifier)], voting="soft"
     )
 
-    # Calibrated classifier to improve probability predictions
     calibrated_clf = CalibratedClassifierCV(
-        estimator=voting_clf,
-        cv=3,
-        method="sigmoid",
+        estimator=voting_clf, cv=3, method="sigmoid"
     )
 
-    # Define the pipeline using ImbPipeline from imblearn
     pipeline = ImbPipeline(
         steps=[
             ("preprocessor", preprocessor),
@@ -263,36 +258,40 @@ def main():
     min_class_size_jewish = counts_jewish.min()
 
     # Create pipelines for each sector
-    pipeline_arab = create_pipeline(min_class_size_arab)
-    pipeline_jewish = create_pipeline(min_class_size_jewish)
+    pipeline_arab = create_pipeline(
+        min_samples=min_class_size_arab, dataset_type="Arab"
+    )
+    pipeline_jewish = create_pipeline(
+        min_samples=min_class_size_jewish, dataset_type="Jewish"
+    )
 
     # Unified Optuna objective function
     def objective(trial, X_train, y_train, pipeline):
         param = {
             "classifier__estimator__xgb__max_depth": trial.suggest_int(
-                "max_depth", 2, 10
+                "max_depth", 3, 7
             ),
             "classifier__estimator__xgb__min_child_weight": trial.suggest_int(
                 "min_child_weight", 1, 20
             ),
             "classifier__estimator__xgb__learning_rate": trial.suggest_float(
-                "learning_rate", 0.005, 0.2, log=True
+                "learning_rate", 0.01, 0.1
             ),
             "classifier__estimator__xgb__n_estimators": trial.suggest_int(
-                "n_estimators", 50, 500
+                "n_estimators", 100, 500
             ),
             "classifier__estimator__xgb__colsample_bytree": trial.suggest_float(
-                "colsample_bytree", 0.3, 0.9
+                "colsample_bytree", 0.3, 0.8
             ),
             "classifier__estimator__xgb__subsample": trial.suggest_float(
-                "subsample", 0.4, 0.9
+                "subsample", 0.5, 0.9
             ),
             "classifier__estimator__xgb__gamma": trial.suggest_float("gamma", 0, 5),
             "classifier__estimator__xgb__reg_alpha": trial.suggest_float(
-                "reg_alpha", 0, 5
+                "reg_alpha", 0.1, 10
             ),
             "classifier__estimator__xgb__reg_lambda": trial.suggest_float(
-                "reg_lambda", 0.5, 10
+                "reg_lambda", 0.1, 10
             ),
         }
         pipeline.set_params(**param)

@@ -63,6 +63,7 @@
 			sector: Number(formData.get("sector")),
 			sex: Number(formData.get("sex")),
 			educ_group: Number(formData.get("educationLevel")),
+			v111: Number(formData.get("politicalOrientation")),
 		};
 
 		fetch("https://israeli-regression.onrender.com/predict", {
