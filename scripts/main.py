@@ -160,13 +160,13 @@ def create_pipeline(min_samples):
         use_label_encoder=False,
         max_depth=2,
         min_child_weight=20,
-        n_estimators=1000,
+        n_estimators=300,
         learning_rate=0.01,
         gamma=3,
-        reg_alpha=10,
-        reg_lambda=15,
-        subsample=0.5,
-        colsample_bytree=0.3,
+        reg_alpha=20,
+        reg_lambda=30,
+        subsample=0.7,
+        colsample_bytree=0.5,
     )
 
     rf_classifier = RandomForestClassifier(n_estimators=80)
