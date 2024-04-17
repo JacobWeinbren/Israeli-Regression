@@ -4,4 +4,5 @@ imblearn==0.0
 xgboost==2.0.3
 pandas==2.2.2
 Flask-Cors==4.0.0
+dask-ml==2024.4.4
 Gunicorn
