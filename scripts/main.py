@@ -7,9 +7,8 @@ import joblib
 import logging
 from sklearn.model_selection import (
     train_test_split,
-    StratifiedKFold,
 )
-from sklearn.metrics import roc_auc_score, make_scorer, classification_report
+from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import (
     StandardScaler,
     PolynomialFeatures,
@@ -23,11 +22,12 @@ from sklearn.impute import KNNImputer
 from xgboost import XGBClassifier
 from imblearn.over_sampling import BorderlineSMOTE
 from sklearn.calibration import CalibratedClassifierCV
-from skopt import BayesSearchCV
-from skopt.space import Real, Integer
 import optuna
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import cross_val_score
+from pandas.api.types import CategoricalDtype
+import pandas as pd
+from dask_ml.preprocessing import StandardScaler, Categorizer, DummyEncoder
 
 # Custom logging setup
 logging.basicConfig(
@@ -44,8 +44,6 @@ def load_and_prepare_data(filepath):
     df = df[df["v131"] != 98]  # Remove 'Don't know' from v131
     unwanted_v104 = [16, 17, 18, 19, 20, 21, 30, 94, 96, 97, 98, 99]
     df = df[~df["v104"].isin(unwanted_v104)]  # Remove specified categories from v104
-
-    logging.info(f"Data after filtering unwanted categories: {df.shape}")
 
     # Manually group v712 into bins
     bins = [-1, 1, 3, 5, 7, 9, 11]  # Define bin edges
@@ -100,36 +98,41 @@ def load_and_prepare_data(filepath):
     X = df[selected_features]
     y = df["v104"]
 
+    # Define the categorical type with explicit categories
+    cat_type = CategoricalDtype(categories=[1.0, 2.0, 3.0, 4.0, 5.0], ordered=True)
+
+    # Convert the column to the defined categorical type
+    df["v144"] = df["v144"].astype(cat_type)
+
     return X, y
 
 
 def create_pipeline(min_samples):
-    k_neighbors = max(min_samples - 1, 1)
-
+    k_neighbors = min(min_samples - 1, 5)
     if min_samples <= 2:
         k_neighbors = 1
 
     numeric_transformer = Pipeline(
-        steps=[
-            ("imputer", KNNImputer(n_neighbors=3)),
+        [
+            (
+                "imputer",
+                KNNImputer(n_neighbors=3),
+            ),
             ("scaler", StandardScaler()),
             (
                 "poly",
-                PolynomialFeatures(degree=3, interaction_only=True, include_bias=False),
+                PolynomialFeatures(degree=2, interaction_only=True, include_bias=False),
             ),
         ]
     )
 
     categorical_transformer = Pipeline(
-        steps=[("onehot", OneHotEncoder(handle_unknown="ignore"))]
-    )
-
-    interaction_transformer = Pipeline(
-        steps=[
-            ("onehot", OneHotEncoder(handle_unknown="ignore")),
+        [
+            ("categorizer", Categorizer()),
+            ("encoder", DummyEncoder()),
             (
                 "poly",
-                PolynomialFeatures(degree=3, interaction_only=True, include_bias=False),
+                PolynomialFeatures(degree=2, interaction_only=True, include_bias=False),
             ),
         ]
     )
@@ -142,42 +145,41 @@ def create_pipeline(min_samples):
                 categorical_transformer,
                 ["recode_v131", "sex", "educ_group", "v144"],
             ),
-            (
-                "cat_interact",
-                interaction_transformer,
-                ["recode_v131", "sex", "educ_group", "v144"],
-            ),
         ]
     )
 
+    # Define the SMOTE for handling imbalanced data
     smote = BorderlineSMOTE(
         sampling_strategy="auto", k_neighbors=k_neighbors, random_state=42
     )
 
+    # Define the classifier
     xgb_classifier = XGBClassifier(
         eval_metric="mlogloss",
         use_label_encoder=False,
-        max_depth=4,
-        min_child_weight=5,
-        n_estimators=300,
-        learning_rate=0.05,
-        gamma=0.3,
-        reg_alpha=1,
-        reg_lambda=2,
-        subsample=0.7,
-        colsample_bytree=0.5,
+        max_depth=2,
+        min_child_weight=10,
+        n_estimators=200,
+        learning_rate=0.01,
+        gamma=0.5,
+        reg_alpha=2,
+        reg_lambda=3,
+        subsample=0.5,
+        colsample_bytree=0.4,
     )
 
+    # Calibrated classifier to improve probability predictions
     calibrated_clf = CalibratedClassifierCV(
         estimator=xgb_classifier,
         cv=3,
         method="sigmoid",
     )
 
+    # Define the pipeline using ImbPipeline from imblearn
     pipeline = ImbPipeline(
         steps=[
-            ("resample", smote),
             ("preprocessor", preprocessor),
+            ("resample", smote),
             ("classifier", calibrated_clf),
         ]
     )
