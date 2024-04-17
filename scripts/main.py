@@ -158,7 +158,7 @@ def create_pipeline(min_samples):
     xgb_classifier = XGBClassifier(
         eval_metric="mlogloss",
         use_label_encoder=False,
-        max_depth=2,
+        max_depth=4,
         min_child_weight=5,
         n_estimators=300,
         learning_rate=0.05,
@@ -318,15 +318,16 @@ def main():
         n_trials=1000,
     )
 
+    # Correctly set parameters for the XGBClassifier within the VotingClassifier
     best_pipeline_arab = pipeline_arab.set_params(
         **{
-            "classifier__estimator__" + key: value
+            "classifier__estimator__xgb__" + key: value
             for key, value in study_arab.best_params.items()
         }
     )
     best_pipeline_jewish = pipeline_jewish.set_params(
         **{
-            "classifier__estimator__" + key: value
+            "classifier__estimator__xgb__" + key: value
             for key, value in study_jewish.best_params.items()
         }
     )
