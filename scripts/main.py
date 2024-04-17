@@ -43,10 +43,11 @@ def load_and_prepare_data(filepath):
     unwanted_v104 = [16, 17, 18, 19, 20, 21, 30, 94, 96, 97, 98, 99]
     df = df[~df["v104"].isin(unwanted_v104)]  # Remove specified categories from v104
 
-    # Manually group v712 into bins and make it ordinal
+    # Manually group v712 into bins and make it ordinal using CategoricalDtype
     bins = [-1, 1, 3, 5, 7, 9, 11]  # Define bin edges
     labels = [0, 1, 2, 3, 4, 5]  # Define labels for each bin
     df["v712_groups"] = pd.cut(df["v712"], bins=bins, labels=labels, ordered=True)
+    df["v712_groups"] = df["v712_groups"].astype(pd.CategoricalDtype(ordered=True))
 
     # Adjust recode_v131 based on sector
     recode_map = {1.0: 1, 2.0: 2, 3.0: 3}
@@ -101,10 +102,17 @@ def load_and_prepare_data(filepath):
     X = df[selected_features]
     y = df["v104"]
 
-    # Define the categorical type with explicit categories and make it ordinal
-    cat_type = pd.CategoricalDtype(categories=[1.0, 2.0, 3.0, 4.0, 5.0], ordered=True)
-    df["v144"] = df["v144"].astype(cat_type)  # religiosity
-    df["v111"] = df["v111"].astype(cat_type)  # left-right political spectrum
+    # Define the categorical type for religiosity with explicit categories and make it ordinal
+    cat_type_religiosity = pd.CategoricalDtype(
+        categories=[1.0, 2.0, 3.0, 4.0, 5.0], ordered=True
+    )
+    df["v144"] = df["v144"].astype(cat_type_religiosity)  # religiosity
+
+    # Define the categorical type for political spectrum with explicit categories and make it ordinal
+    cat_type_political = pd.CategoricalDtype(
+        categories=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], ordered=True
+    )
+    df["v111"] = df["v111"].astype(cat_type_political)  # left-right political spectrum
 
     return X, y
 
@@ -266,29 +274,29 @@ def main():
     def objective(trial, X_train, y_train, pipeline):
         param = {
             "classifier__estimator__xgb__max_depth": trial.suggest_int(
-                "max_depth", 3, 7
+                "max_depth", 3, 6
             ),
             "classifier__estimator__xgb__min_child_weight": trial.suggest_int(
-                "min_child_weight", 1, 20
+                "min_child_weight", 5, 50
             ),
             "classifier__estimator__xgb__learning_rate": trial.suggest_float(
-                "learning_rate", 0.01, 0.1
+                "learning_rate", 0.01, 0.05
             ),
             "classifier__estimator__xgb__n_estimators": trial.suggest_int(
-                "n_estimators", 100, 500
+                "n_estimators", 100, 300
             ),
             "classifier__estimator__xgb__colsample_bytree": trial.suggest_float(
-                "colsample_bytree", 0.3, 0.8
+                "colsample_bytree", 0.5, 0.7
             ),
             "classifier__estimator__xgb__subsample": trial.suggest_float(
-                "subsample", 0.5, 0.9
+                "subsample", 0.6, 0.8
             ),
-            "classifier__estimator__xgb__gamma": trial.suggest_float("gamma", 0, 5),
+            "classifier__estimator__xgb__gamma": trial.suggest_float("gamma", 1, 10),
             "classifier__estimator__xgb__reg_alpha": trial.suggest_float(
-                "reg_alpha", 0.1, 10
+                "reg_alpha", 1, 100
             ),
             "classifier__estimator__xgb__reg_lambda": trial.suggest_float(
-                "reg_lambda", 0.1, 10
+                "reg_lambda", 1, 100
             ),
         }
         pipeline.set_params(**param)
