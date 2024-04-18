@@ -1,4 +1,4 @@
-# Codebase Overview
+# Israeli Demographic Election Model
 
 This codebase is structured to handle data processing, model training, and prediction for machine learning on the [Israeli Election Study 2022](https://socsci4.tau.ac.il/mu2/ines/). It includes scripts for data preparation, model training, evaluation, and a web application for making predictions.
 
