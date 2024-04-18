@@ -129,7 +129,7 @@ def create_pipeline(min_samples):
             (
                 "poly",
                 PolynomialFeatures(
-                    degree=3,
+                    degree=2,
                     interaction_only=True,
                     include_bias=False,
                 ),
@@ -309,13 +309,13 @@ def main():
     study_arab = optuna.create_study(direction="maximize")
     study_arab.optimize(
         lambda trial: objective(trial, X_arab_train, y_arab_train, pipeline_arab),
-        n_trials=5,
+        n_trials=2000,
     )
 
     study_jewish = optuna.create_study(direction="maximize")
     study_jewish.optimize(
         lambda trial: objective(trial, X_jewish_train, y_jewish_train, pipeline_jewish),
-        n_trials=5,
+        n_trials=2000,
     )
 
     # Correctly set parameters for the XGBClassifier within the VotingClassifier
@@ -340,19 +340,21 @@ def main():
     y_arab_pred = best_pipeline_arab.predict_proba(X_arab_test)
     y_jewish_pred = best_pipeline_jewish.predict_proba(X_jewish_test)
 
-    # Evaluate models
-    arab_auc = roc_auc_score(y_arab_test, y_arab_pred, multi_class="ovo")
-    jewish_auc = roc_auc_score(y_jewish_test, y_jewish_pred, multi_class="ovo")
+    # Evaluate models using both OVR and OVO
+    arab_auc_ovr = roc_auc_score(y_arab_test, y_arab_pred, multi_class="ovr")
+    arab_auc_ovo = roc_auc_score(y_arab_test, y_arab_pred, multi_class="ovo")
+    jewish_auc_ovr = roc_auc_score(y_jewish_test, y_jewish_pred, multi_class="ovr")
+    jewish_auc_ovo = roc_auc_score(y_jewish_test, y_jewish_pred, multi_class="ovo")
 
     # Log the AUC scores
-    logging.info(f"Arab sector AUC: {arab_auc}")
-    logging.info(f"Jewish sector AUC: {jewish_auc}")
+    logging.info(f"Arab sector AUC OVR: {arab_auc_ovr}")
+    logging.info(f"Arab sector AUC OVO: {arab_auc_ovo}")
+    logging.info(f"Jewish sector AUC OVR: {jewish_auc_ovr}")
+    logging.info(f"Jewish sector AUC OVO: {jewish_auc_ovo}")
 
     # Optionally, save the model
     joblib.dump(best_pipeline_arab, "output/best_model_arab.joblib")
     joblib.dump(best_pipeline_jewish, "output/best_model_jewish.joblib")
-
-    return arab_auc, jewish_auc
 
 
 if __name__ == "__main__":
