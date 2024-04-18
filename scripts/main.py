@@ -316,13 +316,13 @@ def main():
     study_arab = optuna.create_study(direction="maximize")
     study_arab.optimize(
         lambda trial: objective(trial, X_arab_train, y_arab_train, pipeline_arab),
-        n_trials=10,
+        n_trials=500,
     )
 
     study_jewish = optuna.create_study(direction="maximize")
     study_jewish.optimize(
         lambda trial: objective(trial, X_jewish_train, y_jewish_train, pipeline_jewish),
-        n_trials=10,
+        n_trials=500,
     )
 
     # Correctly set parameters for the XGBClassifier within the VotingClassifier
