@@ -129,7 +129,7 @@ def create_pipeline(min_samples):
             (
                 "poly",
                 PolynomialFeatures(
-                    degree=2,
+                    degree=3,
                     interaction_only=True,
                     include_bias=False,
                 ),
@@ -162,15 +162,15 @@ def create_pipeline(min_samples):
     xgb_params = {
         "eval_metric": "mlogloss",
         "use_label_encoder": False,
-        "max_depth": 7,
-        "min_child_weight": 10,
+        "max_depth": 10,
+        "min_child_weight": 5,
         "n_estimators": 500,
-        "learning_rate": 0.05,
-        "gamma": 1,
-        "reg_alpha": 0.5,
-        "reg_lambda": 0.5,
-        "subsample": 0.9,
-        "colsample_bytree": 0.8,
+        "learning_rate": 0.1,
+        "gamma": 0.5,
+        "reg_alpha": 0.1,
+        "reg_lambda": 0.1,
+        "subsample": 1.0,
+        "colsample_bytree": 1.0,
     }
 
     xgb_classifier = XGBClassifier(**xgb_params)
@@ -270,29 +270,29 @@ def main():
     def objective(trial, X_train, y_train, pipeline):
         param = {
             "classifier__estimator__xgb__max_depth": trial.suggest_int(
-                "max_depth", 6, 10
+                "max_depth", 8, 12
             ),
             "classifier__estimator__xgb__min_child_weight": trial.suggest_int(
-                "min_child_weight", 1, 10
+                "min_child_weight", 1, 5
             ),
             "classifier__estimator__xgb__learning_rate": trial.suggest_float(
-                "learning_rate", 0.03, 0.1
+                "learning_rate", 0.05, 0.2
             ),
             "classifier__estimator__xgb__n_estimators": trial.suggest_int(
-                "n_estimators", 200, 500
+                "n_estimators", 300, 600
             ),
             "classifier__estimator__xgb__colsample_bytree": trial.suggest_float(
-                "colsample_bytree", 0.7, 0.9
+                "colsample_bytree", 0.8, 1.0
             ),
             "classifier__estimator__xgb__subsample": trial.suggest_float(
-                "subsample", 0.8, 1.0
+                "subsample", 0.9, 1.0
             ),
-            "classifier__estimator__xgb__gamma": trial.suggest_float("gamma", 0, 3),
+            "classifier__estimator__xgb__gamma": trial.suggest_float("gamma", 0, 2),
             "classifier__estimator__xgb__reg_alpha": trial.suggest_float(
-                "reg_alpha", 0, 5
+                "reg_alpha", 0, 1
             ),
             "classifier__estimator__xgb__reg_lambda": trial.suggest_float(
-                "reg_lambda", 0, 5
+                "reg_lambda", 0, 1
             ),
         }
         pipeline.set_params(**param)
@@ -309,13 +309,13 @@ def main():
     study_arab = optuna.create_study(direction="maximize")
     study_arab.optimize(
         lambda trial: objective(trial, X_arab_train, y_arab_train, pipeline_arab),
-        n_trials=10,
+        n_trials=5,
     )
 
     study_jewish = optuna.create_study(direction="maximize")
     study_jewish.optimize(
         lambda trial: objective(trial, X_jewish_train, y_jewish_train, pipeline_jewish),
-        n_trials=10,
+        n_trials=5,
     )
 
     # Correctly set parameters for the XGBClassifier within the VotingClassifier
