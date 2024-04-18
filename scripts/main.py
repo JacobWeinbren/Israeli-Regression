@@ -9,7 +9,7 @@ from sklearn.model_selection import (
     train_test_split,
 )
 from sklearn.metrics import roc_auc_score
-from sklearn.preprocessing import PolynomialFeatures, LabelEncoder, StandardScaler
+from sklearn.preprocessing import PolynomialFeatures, LabelEncoder, RobustScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from imblearn.pipeline import Pipeline as ImbPipeline
@@ -125,7 +125,7 @@ def create_pipeline(min_samples):
         [
             ("categorizer", Categorizer()),
             ("encoder", DummyEncoder()),
-            ("scaler", StandardScaler()),  # Add a scaler here
+            ("scaler", RobustScaler()),
             (
                 "poly",
                 PolynomialFeatures(degree=2, interaction_only=True, include_bias=False),
@@ -156,19 +156,20 @@ def create_pipeline(min_samples):
     xgb_params = {
         "eval_metric": "mlogloss",
         "use_label_encoder": False,
-        "max_depth": 6,
-        "min_child_weight": 5,
+        "max_depth": 3,
+        "min_child_weight": 20,
         "n_estimators": 500,
-        "learning_rate": 0.05,
-        "gamma": 1,
-        "reg_alpha": 0.5,
-        "reg_lambda": 0.5,
-        "subsample": 0.9,
-        "colsample_bytree": 0.9,
+        "learning_rate": 0.01,
+        "gamma": 5,
+        "reg_alpha": 5,
+        "reg_lambda": 5,
+        "subsample": 0.7,
+        "colsample_bytree": 0.7,
     }
-
     xgb_classifier = XGBClassifier(**xgb_params)
-    rf_classifier = RandomForestClassifier(n_estimators=200, max_features="sqrt")
+    rf_classifier = RandomForestClassifier(
+        n_estimators=200, max_features="sqrt", min_samples_leaf=10
+    )
     voting_clf = VotingClassifier(
         estimators=[
             ("xgb", xgb_classifier),
@@ -272,29 +273,29 @@ def main():
     def objective(trial, X_train, y_train, pipeline):
         param = {
             "classifier__estimator__xgb__max_depth": trial.suggest_int(
-                "max_depth", 3, 15
+                "max_depth", 3, 7
             ),
             "classifier__estimator__xgb__min_child_weight": trial.suggest_int(
-                "min_child_weight", 1, 12
+                "min_child_weight", 10, 50
             ),
             "classifier__estimator__xgb__learning_rate": trial.suggest_float(
-                "learning_rate", 0.001, 0.2
+                "learning_rate", 0.001, 0.02
             ),
             "classifier__estimator__xgb__n_estimators": trial.suggest_int(
-                "n_estimators", 50, 1000
+                "n_estimators", 100, 1000
             ),
             "classifier__estimator__xgb__colsample_bytree": trial.suggest_float(
-                "colsample_bytree", 0.3, 1.0
+                "colsample_bytree", 0.5, 0.8
             ),
             "classifier__estimator__xgb__subsample": trial.suggest_float(
-                "subsample", 0.4, 1.0
+                "subsample", 0.5, 0.8
             ),
-            "classifier__estimator__xgb__gamma": trial.suggest_float("gamma", 0, 5),
+            "classifier__estimator__xgb__gamma": trial.suggest_float("gamma", 1, 10),
             "classifier__estimator__xgb__reg_alpha": trial.suggest_float(
-                "reg_alpha", 0.01, 10
+                "reg_alpha", 0.5, 10
             ),
             "classifier__estimator__xgb__reg_lambda": trial.suggest_float(
-                "reg_lambda", 0.01, 10
+                "reg_lambda", 0.5, 10
             ),
             "classifier__estimator__xgb__max_delta_step": trial.suggest_int(
                 "max_delta_step", 0, 10
@@ -317,13 +318,13 @@ def main():
     study_arab = optuna.create_study(direction="maximize")
     study_arab.optimize(
         lambda trial: objective(trial, X_arab_train, y_arab_train, pipeline_arab),
-        n_trials=5,
+        n_trials=250,
     )
 
     study_jewish = optuna.create_study(direction="maximize")
     study_jewish.optimize(
         lambda trial: objective(trial, X_jewish_train, y_jewish_train, pipeline_jewish),
-        n_trials=5,
+        n_trials=250,
     )
 
     # Correctly set parameters for the XGBClassifier within the VotingClassifier
