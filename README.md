@@ -12,7 +12,7 @@ This codebase is structured to handle data processing, model training, and predi
 python scripts/main.py
 ```
 
--   **Class Distribution Analysis**: Analyzes the class distribution for categorical variables.
+-   **Class Distribution Analysis**: Analyses the class distribution for categorical variables.
 
 ```bash
 python scripts/distribution.py
@@ -34,7 +34,7 @@ python scripts/prediction.py
 
 ### Frontend
 
--   **Astro-based Frontend**: The frontend is built using Astro, showcasing components for form inputs and displaying prediction results.
+-   **Astro-based Frontend**: The frontend is built using Astro, using components for form inputs and displaying prediction results.
 
 ```bash
 cd site
