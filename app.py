@@ -18,7 +18,7 @@ encoder_arab = joblib.load("output/encoder_arab.joblib")
 @app.route("/predict", methods=["POST"])
 def predict():
     data = request.get_json()
-    sector = data.pop("sector", None)
+    sector = data.get("sector", None)
     if sector not in [1, 2]:
         return jsonify({"error": "Invalid sector"}), 400
 
