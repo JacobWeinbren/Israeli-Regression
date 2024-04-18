@@ -162,15 +162,15 @@ def create_pipeline(min_samples):
     xgb_params = {
         "eval_metric": "mlogloss",
         "use_label_encoder": False,
-        "max_depth": 5,
-        "min_child_weight": 20,
-        "n_estimators": 200,
-        "learning_rate": 0.02,
-        "gamma": 3,
-        "reg_alpha": 1,
-        "reg_lambda": 1,
-        "subsample": 0.8,
-        "colsample_bytree": 0.6,
+        "max_depth": 7,
+        "min_child_weight": 10,
+        "n_estimators": 500,
+        "learning_rate": 0.05,
+        "gamma": 1,
+        "reg_alpha": 0.5,
+        "reg_lambda": 0.5,
+        "subsample": 0.9,
+        "colsample_bytree": 0.8,
     }
 
     xgb_classifier = XGBClassifier(**xgb_params)
@@ -270,29 +270,29 @@ def main():
     def objective(trial, X_train, y_train, pipeline):
         param = {
             "classifier__estimator__xgb__max_depth": trial.suggest_int(
-                "max_depth", 4, 7
+                "max_depth", 6, 10
             ),
             "classifier__estimator__xgb__min_child_weight": trial.suggest_int(
-                "min_child_weight", 3, 20
+                "min_child_weight", 1, 10
             ),
             "classifier__estimator__xgb__learning_rate": trial.suggest_float(
-                "learning_rate", 0.01, 0.05
+                "learning_rate", 0.03, 0.1
             ),
             "classifier__estimator__xgb__n_estimators": trial.suggest_int(
-                "n_estimators", 150, 400
+                "n_estimators", 200, 500
             ),
             "classifier__estimator__xgb__colsample_bytree": trial.suggest_float(
-                "colsample_bytree", 0.6, 0.8
+                "colsample_bytree", 0.7, 0.9
             ),
             "classifier__estimator__xgb__subsample": trial.suggest_float(
-                "subsample", 0.7, 0.9
+                "subsample", 0.8, 1.0
             ),
-            "classifier__estimator__xgb__gamma": trial.suggest_float("gamma", 0.5, 5),
+            "classifier__estimator__xgb__gamma": trial.suggest_float("gamma", 0, 3),
             "classifier__estimator__xgb__reg_alpha": trial.suggest_float(
-                "reg_alpha", 0.5, 10
+                "reg_alpha", 0, 5
             ),
             "classifier__estimator__xgb__reg_lambda": trial.suggest_float(
-                "reg_lambda", 0.5, 10
+                "reg_lambda", 0, 5
             ),
         }
         pipeline.set_params(**param)
