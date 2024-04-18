@@ -9,10 +9,7 @@ from sklearn.model_selection import (
     train_test_split,
 )
 from sklearn.metrics import roc_auc_score
-from sklearn.preprocessing import (
-    PolynomialFeatures,
-    LabelEncoder,
-)
+from sklearn.preprocessing import PolynomialFeatures, LabelEncoder, StandardScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from imblearn.pipeline import Pipeline as ImbPipeline
@@ -26,7 +23,6 @@ import pandas as pd
 from dask_ml.preprocessing import Categorizer, DummyEncoder
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.decomposition import PCA
 from sklearn.model_selection import StratifiedKFold
 
 # Custom logging setup
@@ -129,11 +125,11 @@ def create_pipeline(min_samples):
         [
             ("categorizer", Categorizer()),
             ("encoder", DummyEncoder()),
+            ("scaler", StandardScaler()),  # Add a scaler here
             (
                 "poly",
-                PolynomialFeatures(degree=1, interaction_only=True, include_bias=False),
+                PolynomialFeatures(degree=2, interaction_only=True, include_bias=False),
             ),
-            ("pca", PCA(n_components=0.95)),
         ]
     )
 
@@ -154,29 +150,31 @@ def create_pipeline(min_samples):
                 ],
             ),
         ],
-        remainder="passthrough",  # Include other features without transformation
     )
 
     # Adjusted XGB parameters for further regularization
     xgb_params = {
         "eval_metric": "mlogloss",
         "use_label_encoder": False,
-        "max_depth": 3,
-        "min_child_weight": 10,
-        "n_estimators": 200,
-        "learning_rate": 0.03,
-        "gamma": 2,
-        "reg_alpha": 1,
-        "reg_lambda": 1,
-        "subsample": 0.8,
-        "colsample_bytree": 0.8,
+        "max_depth": 6,
+        "min_child_weight": 5,
+        "n_estimators": 500,
+        "learning_rate": 0.05,
+        "gamma": 1,
+        "reg_alpha": 0.5,
+        "reg_lambda": 0.5,
+        "subsample": 0.9,
+        "colsample_bytree": 0.9,
     }
 
     xgb_classifier = XGBClassifier(**xgb_params)
-    rf_classifier = RandomForestClassifier(n_estimators=100, max_features="sqrt")
-
+    rf_classifier = RandomForestClassifier(n_estimators=200, max_features="sqrt")
     voting_clf = VotingClassifier(
-        estimators=[("xgb", xgb_classifier), ("rf", rf_classifier)], voting="soft"
+        estimators=[
+            ("xgb", xgb_classifier),
+            ("rf", rf_classifier),
+        ],
+        voting="soft",
     )
 
     calibrated_clf = CalibratedClassifierCV(
@@ -274,34 +272,37 @@ def main():
     def objective(trial, X_train, y_train, pipeline):
         param = {
             "classifier__estimator__xgb__max_depth": trial.suggest_int(
-                "max_depth", 6, 10
+                "max_depth", 3, 15
             ),
             "classifier__estimator__xgb__min_child_weight": trial.suggest_int(
-                "min_child_weight", 3, 7
+                "min_child_weight", 1, 12
             ),
             "classifier__estimator__xgb__learning_rate": trial.suggest_float(
-                "learning_rate", 0.01, 0.1
+                "learning_rate", 0.001, 0.2
             ),
             "classifier__estimator__xgb__n_estimators": trial.suggest_int(
-                "n_estimators", 200, 500
+                "n_estimators", 50, 1000
             ),
             "classifier__estimator__xgb__colsample_bytree": trial.suggest_float(
-                "colsample_bytree", 0.7, 0.9
+                "colsample_bytree", 0.3, 1.0
             ),
             "classifier__estimator__xgb__subsample": trial.suggest_float(
-                "subsample", 0.8, 0.9
+                "subsample", 0.4, 1.0
             ),
-            "classifier__estimator__xgb__gamma": trial.suggest_float("gamma", 0.5, 3),
+            "classifier__estimator__xgb__gamma": trial.suggest_float("gamma", 0, 5),
             "classifier__estimator__xgb__reg_alpha": trial.suggest_float(
-                "reg_alpha", 0.1, 2
+                "reg_alpha", 0.01, 10
             ),
             "classifier__estimator__xgb__reg_lambda": trial.suggest_float(
-                "reg_lambda", 0.1, 2
+                "reg_lambda", 0.01, 10
+            ),
+            "classifier__estimator__xgb__max_delta_step": trial.suggest_int(
+                "max_delta_step", 0, 10
             ),
         }
         pipeline.set_params(**param)
         try:
-            skf = StratifiedKFold(n_splits=5)
+            skf = StratifiedKFold(n_splits=6)
             score = np.mean(
                 cross_val_score(
                     pipeline, X_train, y_train, cv=skf, scoring="roc_auc_ovr"
@@ -316,13 +317,13 @@ def main():
     study_arab = optuna.create_study(direction="maximize")
     study_arab.optimize(
         lambda trial: objective(trial, X_arab_train, y_arab_train, pipeline_arab),
-        n_trials=500,
+        n_trials=5,
     )
 
     study_jewish = optuna.create_study(direction="maximize")
     study_jewish.optimize(
         lambda trial: objective(trial, X_jewish_train, y_jewish_train, pipeline_jewish),
-        n_trials=500,
+        n_trials=5,
     )
 
     # Correctly set parameters for the XGBClassifier within the VotingClassifier
