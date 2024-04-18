@@ -270,29 +270,29 @@ def main():
     def objective(trial, X_train, y_train, pipeline):
         param = {
             "classifier__estimator__xgb__max_depth": trial.suggest_int(
-                "max_depth", 8, 12
+                "max_depth", 6, 10
             ),
             "classifier__estimator__xgb__min_child_weight": trial.suggest_int(
-                "min_child_weight", 1, 5
+                "min_child_weight", 3, 7
             ),
             "classifier__estimator__xgb__learning_rate": trial.suggest_float(
-                "learning_rate", 0.05, 0.2
+                "learning_rate", 0.01, 0.1
             ),
             "classifier__estimator__xgb__n_estimators": trial.suggest_int(
-                "n_estimators", 300, 600
+                "n_estimators", 200, 500
             ),
             "classifier__estimator__xgb__colsample_bytree": trial.suggest_float(
-                "colsample_bytree", 0.8, 1.0
+                "colsample_bytree", 0.7, 0.9
             ),
             "classifier__estimator__xgb__subsample": trial.suggest_float(
-                "subsample", 0.9, 1.0
+                "subsample", 0.8, 0.9
             ),
-            "classifier__estimator__xgb__gamma": trial.suggest_float("gamma", 0, 2),
+            "classifier__estimator__xgb__gamma": trial.suggest_float("gamma", 0.5, 3),
             "classifier__estimator__xgb__reg_alpha": trial.suggest_float(
-                "reg_alpha", 0, 1
+                "reg_alpha", 0.1, 2
             ),
             "classifier__estimator__xgb__reg_lambda": trial.suggest_float(
-                "reg_lambda", 0, 1
+                "reg_lambda", 0.1, 2
             ),
         }
         pipeline.set_params(**param)
