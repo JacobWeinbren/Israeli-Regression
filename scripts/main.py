@@ -26,6 +26,8 @@ import pandas as pd
 from dask_ml.preprocessing import Categorizer, DummyEncoder
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.decomposition import PCA
+from sklearn.model_selection import StratifiedKFold
 
 # Custom logging setup
 logging.basicConfig(
@@ -122,70 +124,72 @@ def create_pipeline(min_samples):
     if min_samples <= 2:
         k_neighbors = 1
 
+    # Feature reduction and interaction control
     categorical_transformer = Pipeline(
         [
             ("categorizer", Categorizer()),
             ("encoder", DummyEncoder()),
             (
                 "poly",
-                PolynomialFeatures(
-                    degree=2,
-                    interaction_only=True,
-                    include_bias=False,
-                ),
+                PolynomialFeatures(degree=1, interaction_only=True, include_bias=False),
             ),
+            ("pca", PCA(n_components=0.95)),
         ]
     )
 
+    # Enhanced preprocessor with feature selection
     preprocessor = ColumnTransformer(
         transformers=[
             (
                 "cat",
                 categorical_transformer,
                 [
+                    "age_group",
+                    "v144",
+                    "v712_groups",
                     "recode_v131",
                     "sex",
                     "educ_group",
-                    "v144",
-                    "v712_groups",
-                    "age_group",
                     "v111",
                 ],
             ),
-        ]
+        ],
+        remainder="passthrough",  # Include other features without transformation
     )
 
-    smote = BorderlineSMOTE(
-        sampling_strategy="auto", k_neighbors=k_neighbors, random_state=42
-    )
-
+    # Adjusted XGB parameters for further regularization
     xgb_params = {
         "eval_metric": "mlogloss",
         "use_label_encoder": False,
-        "max_depth": 10,
-        "min_child_weight": 5,
-        "n_estimators": 500,
-        "learning_rate": 0.1,
-        "gamma": 0.5,
-        "reg_alpha": 0.1,
-        "reg_lambda": 0.1,
-        "subsample": 1.0,
-        "colsample_bytree": 1.0,
+        "max_depth": 3,
+        "min_child_weight": 10,
+        "n_estimators": 200,
+        "learning_rate": 0.03,
+        "gamma": 2,
+        "reg_alpha": 1,
+        "reg_lambda": 1,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
     }
 
     xgb_classifier = XGBClassifier(**xgb_params)
-    rf_classifier = RandomForestClassifier(n_estimators=80)
+    rf_classifier = RandomForestClassifier(n_estimators=100, max_features="sqrt")
 
     voting_clf = VotingClassifier(
         estimators=[("xgb", xgb_classifier), ("rf", rf_classifier)], voting="soft"
     )
 
     calibrated_clf = CalibratedClassifierCV(
-        estimator=voting_clf, cv=3, method="sigmoid"
+        estimator=voting_clf, cv=5, method="sigmoid"
+    )
+
+    # Reintegrate BorderlineSMOTE
+    smote = BorderlineSMOTE(
+        sampling_strategy="auto", k_neighbors=k_neighbors, random_state=42
     )
 
     pipeline = ImbPipeline(
-        steps=[
+        [
             ("preprocessor", preprocessor),
             ("resample", smote),
             ("classifier", calibrated_clf),
@@ -244,14 +248,14 @@ def main():
     X_arab_train, X_arab_test, y_arab_train, y_arab_test = train_test_split(
         arab_data.loc[y_arab_merged.index],
         y_arab_encoded,
-        test_size=0.2,
+        test_size=0.24,
         random_state=42,
         stratify=y_arab_encoded,
     )
     X_jewish_train, X_jewish_test, y_jewish_train, y_jewish_test = train_test_split(
         jewish_data.loc[y_jewish_merged.index],
         y_jewish_encoded,
-        test_size=0.2,
+        test_size=0.24,
         random_state=42,
         stratify=y_jewish_encoded,
     )
@@ -297,8 +301,11 @@ def main():
         }
         pipeline.set_params(**param)
         try:
+            skf = StratifiedKFold(n_splits=5)
             score = np.mean(
-                cross_val_score(pipeline, X_train, y_train, cv=5, scoring="roc_auc_ovr")
+                cross_val_score(
+                    pipeline, X_train, y_train, cv=skf, scoring="roc_auc_ovr"
+                )
             )
         except ValueError as e:
             print(f"Error during scoring: {e}")
@@ -309,13 +316,13 @@ def main():
     study_arab = optuna.create_study(direction="maximize")
     study_arab.optimize(
         lambda trial: objective(trial, X_arab_train, y_arab_train, pipeline_arab),
-        n_trials=2000,
+        n_trials=10,
     )
 
     study_jewish = optuna.create_study(direction="maximize")
     study_jewish.optimize(
         lambda trial: objective(trial, X_jewish_train, y_jewish_train, pipeline_jewish),
-        n_trials=2000,
+        n_trials=10,
     )
 
     # Correctly set parameters for the XGBClassifier within the VotingClassifier
