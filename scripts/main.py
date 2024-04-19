@@ -17,7 +17,6 @@ from xgboost import XGBClassifier
 from imblearn.over_sampling import BorderlineSMOTE
 from sklearn.calibration import CalibratedClassifierCV
 import optuna
-from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import cross_val_score
 import pandas as pd
 from dask_ml.preprocessing import Categorizer, DummyEncoder
@@ -361,7 +360,7 @@ def main():
     logging.info(f"Jewish sector AUC OVR: {jewish_auc_ovr}")
     logging.info(f"Jewish sector AUC OVO: {jewish_auc_ovo}")
 
-    # Optionally, save the model
+    # Save the model
     joblib.dump(best_pipeline_arab, "output/best_model_arab.joblib")
     joblib.dump(best_pipeline_jewish, "output/best_model_jewish.joblib")
 
