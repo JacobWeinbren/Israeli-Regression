@@ -7,3 +7,4 @@ package-lock.json
 output.log
 lambda-env/
 main/
+input/
